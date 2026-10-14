@@ -1,15 +1,16 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'orb-v11';
+const CACHE = 'orb-v12';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'store.js', 'ai.js', 'markdown.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
+// Other apps on the same github.io site keep their own caches here too: only clear Orb's old ones
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('orb-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

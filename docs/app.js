@@ -1331,7 +1331,8 @@ function openSettings() {
   });
   $('[data-reset]', el).addEventListener('click', () => {
     if (!confirm('タブ・ブックマーク・アーカイブ・APIキーをすべて消去します。よろしいですか？')) return;
-    localStorage.clear();
+    // Orb shares its storage with the other apps on the same github.io site (ひび手帳 etc.), so erase only Orb's own keys
+    Object.keys(localStorage).filter((k) => k.startsWith('kumo.')).forEach((k) => localStorage.removeItem(k));
     location.reload();
   });
 }

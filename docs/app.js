@@ -54,20 +54,39 @@ function ago(time) {
 const $ = (sel, root = document) => root.querySelector(sel);
 const app = document.getElementById('app');
 
-function toast(message) {
+function toast(message, action) {
+  document.querySelector('.toast')?.remove();
   const el = document.createElement('div');
   el.className = 'toast';
   el.textContent = message;
+  if (action) {
+    const button = document.createElement('button');
+    button.textContent = action.label;
+    button.addEventListener('click', () => {
+      action.run();
+      el.remove();
+    });
+    el.append(button);
+    el.classList.add('has-action');
+  }
   document.body.appendChild(el);
   setTimeout(() => el.classList.add('show'));
   setTimeout(() => {
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
-  }, 2200);
+  }, action ? 5000 : 2200);
 }
 
-/** Opens a site. In a Home Screen web app iOS shows it in an in-app Safari view; "Done" returns to Kumo. */
+/**
+ * Opens a site. A Home Screen web app can't show other sites inside itself, so iOS opens them in an
+ * in-app Safari view (✕ returns to Kumo). Optionally hand off to the Safari app via its
+ * x-safari-https:// scheme (iOS 17+).
+ */
 function openExternal(url) {
+  if (store.settings.openIn === 'safari' && /^https?:/.test(url)) {
+    location.href = 'x-safari-' + url;
+    return;
+  }
   const a = document.createElement('a');
   a.href = url;
   a.target = '_blank';
@@ -376,7 +395,6 @@ function updateAskUI() {
 function renderHome() {
   const tabs = store.tabs;
   const pinned = tabs.filter((t) => t.pinned);
-  const today = tabs.filter((t) => !t.pinned);
   const current = store.currentTab;
   const focused = document.activeElement?.matches?.('.ask-input');
 
@@ -420,41 +438,12 @@ function renderHome() {
         : ''
     }
 
-    <section class="list-section">
-      <div class="section-head">
-        <span>今日</span>
-        ${today.length ? `<button class="link" data-action="close-all">すべて閉じる</button>` : ''}
-      </div>
-      ${
-        today.length
-          ? `<div class="tab-list glass">${today.map(tabRow).join('')}</div>`
-          : `<div class="empty glass">
-              <p><strong>タブはまだありません</strong></p>
-              <p>上の入力欄やブックマークからサイトを開くと、ここにタブとして並びます。ピン留めしていないタブは${
-                Number(store.settings.archiveHours) ? `${store.settings.archiveHours}時間` : '…'
-              }使わないと自動でアーカイブされます。</p>
-            </div>`
-      }
-    </section>
-    <p class="hint">左端からスワイプでサイドバー</p>`;
+    <p class="hint">開いたタブはサイドバーに · 左端からスワイプ</p>`;
 
   const input = $('.ask-input');
   autosize(input);
   updateAskUI();
   if (focused) input.focus({ preventScroll: true });
-}
-
-function tabRow(t) {
-  const isCurrent = store.currentTab?.id === t.id;
-  return `<div class="tab-row ${isCurrent ? 'is-current' : ''}">
-      <button class="tab-main" data-action="open-tab" data-id="${t.id}">
-        ${favicon(t.url, 22)}
-        <span class="tab-text"><span class="tab-title">${esc(t.title)}</span>
-        <small>${esc(hostOf(t.url))} · ${ago(t.lastActive)}</small></span>
-      </button>
-      <button class="tab-btn" data-action="tab-menu" data-id="${t.id}" aria-label="メニュー">${ICON.more}</button>
-      <button class="tab-btn" data-action="close-tab" data-id="${t.id}" aria-label="閉じる">${ICON.x}</button>
-    </div>`;
 }
 
 function installBanner() {
@@ -535,6 +524,12 @@ function renderSidebar() {
 
     <div class="sb-tabs">
       <button class="sb-new" data-action="new-tab">${ICON.plus}<span>新しいタブ</span></button>
+      ${
+        today.length
+          ? `<div class="sb-section"><span>今日</span>
+              <button class="sb-clear" data-action="archive-all">${ICON.archive}<span>すべてアーカイブ</span></button></div>`
+          : ''
+      }
       ${today
         .map(
           (t) => `<div class="sb-tab ${t.id === currentId ? 'active' : ''}">
@@ -623,19 +618,16 @@ function onAppClick(e) {
       openTab(tab);
       break;
     }
-    case 'tab-menu': {
-      const tab = store.findTab(id);
-      if (tab) tabMenu(tab);
-      break;
-    }
     case 'close-tab': {
       const tab = store.findTab(id);
       if (tab) store.closeTab(tab);
       break;
     }
-    case 'close-all':
-      if (confirm('ピン留め以外のタブをすべてアーカイブしますか？')) store.closeAllUnpinned();
+    case 'archive-all': {
+      const { count, undo } = store.archiveAllUnpinned();
+      if (count) toast(`${count}個のタブをアーカイブしました`, { label: '元に戻す', run: undo });
       break;
+    }
     case 'quick':
       openAssistant({ skill: el.dataset.prompt, scope: 'tab' });
       break;
@@ -1107,10 +1099,13 @@ function openSettings() {
 
       <div class="group-title">ブラウジング</div>
       <div class="group">
+        <label class="row"><span>サイトの開き方</span><select name="openIn">${[['inapp', 'Kumoの上に開く'], ['safari', 'Safariアプリで開く']].map(([v, l]) => option(v, l, s.openIn)).join('')}</select></label>
         <label class="row"><span>ブックマークバーを表示</span><input name="showBookmarks" type="checkbox" ${s.showBookmarks ? 'checked' : ''}></label>
         <label class="row"><span>検索エンジン</span><select name="engine">${Object.entries(ENGINES).map(([k, e]) => option(k, e.name, s.engine)).join('')}</select></label>
         <label class="row"><span>タブの自動アーカイブ</span><select name="archiveHours">${[[12, '12時間'], [24, '24時間'], [168, '7日間'], [0, 'しない']].map(([v, l]) => option(v, l, s.archiveHours)).join('')}</select></label>
       </div>
+
+      <p class="group-note">「Kumoの上に開く」は✕でKumoに戻れます。「Safariアプリで開く」はiOS 17以降で使え、Safariのタブ・ログイン状態のまま見られます。ピン留めしていないタブは指定時間使わないとアーカイブされます。</p>
 
       <div class="group-title">データ</div>
       <div class="group">
@@ -1118,7 +1113,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Kumo v0.5 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Kumo v0.6 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>

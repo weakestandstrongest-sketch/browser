@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS = {
   archiveHours: 12,
   showBookmarks: true,
   theme: 'ocean',
+  openIn: 'inapp', // 'inapp' (Safari view on top of Kumo) | 'safari' (the Safari app)
 };
 
 const DEFAULT_BOOKMARKS = [
@@ -175,11 +176,24 @@ export const store = {
     this.commit();
   },
 
-  closeAllUnpinned() {
-    this.state.tabs.filter((t) => !t.pinned).forEach((t) => this.archive(t));
+  /** Archives every unpinned tab (Arc's "Clear"). Returns an undo function. */
+  archiveAllUnpinned() {
+    const removed = this.state.tabs.filter((t) => !t.pinned);
+    const entries = removed.map((t) => this.archive(t));
+    const previousCurrent = this.state.currentTabId;
     this.state.tabs = this.state.tabs.filter((t) => t.pinned);
     if (!this.currentTab) this.state.currentTabId = null;
     this.commit();
+    return {
+      count: removed.length,
+      undo: () => {
+        const ids = new Set(entries.map((e) => e.id));
+        this.state.archived = this.state.archived.filter((a) => !ids.has(a.id));
+        this.state.tabs.push(...removed);
+        this.state.currentTabId = previousCurrent;
+        this.commit();
+      },
+    };
   },
 
   // ---- bookmarks (like a desktop bookmarks bar)
@@ -230,8 +244,10 @@ export const store = {
   },
 
   archive(tab) {
-    this.state.archived.unshift({ id: uid(), url: tab.url, title: tab.title, archivedAt: Date.now() });
+    const entry = { id: uid(), url: tab.url, title: tab.title, archivedAt: Date.now() };
+    this.state.archived.unshift(entry);
     this.state.archived.length = Math.min(this.state.archived.length, ARCHIVE_LIMIT);
+    return entry;
   },
 
   restore(item) {

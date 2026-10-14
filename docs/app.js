@@ -79,7 +79,7 @@ function toast(message, action) {
 
 /**
  * Opens a site. A Home Screen web app can't show other sites inside itself, so iOS opens them in an
- * in-app Safari view (✕ returns to Kumo). Optionally hand off to the Safari app via its
+ * in-app Safari view (✕ returns to Orb). Optionally hand off to the Safari app via its
  * x-safari-https:// scheme (iOS 17+).
  */
 function openExternal(url) {
@@ -201,7 +201,7 @@ function renderShell() {
     <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
     <header class="topbar">
       <div class="topbar-row">
-        <button class="brand" data-action="new-tab" aria-label="新しいタブ"><span class="mini-orb"></span><strong>Kumo</strong></button>
+        <button class="brand" data-action="new-tab" aria-label="新しいタブ"><span class="mini-orb"></span><strong>Orb</strong></button>
         <span class="spacer"></span>
         <button class="icon-btn glass" data-action="settings" aria-label="設定">${ICON.settings}</button>
       </div>
@@ -334,7 +334,7 @@ function buildSuggestions(q) {
   if (url) items.push({ kind: 'open', url, icon: ICON.globe, title: url, subtitle: 'サイトを開く' });
   const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
   items.push({ kind: 'search', query: q, icon: ICON.search, title: q, subtitle: `${engine}で検索` });
-  items.push({ kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Kumo AIに聞く' });
+  items.push({ kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Orb AIに聞く' });
   const lower = q.toLowerCase();
   store.tabs
     .filter((t) => t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
@@ -401,29 +401,14 @@ function renderHome() {
       <section class="hero">
         <div class="orb"></div>
         <h1 class="greet">${greeting()}</h1>
-        <p class="hero-sub">${tabs.length ? `${tabs.length}個のタブ` : 'Kumo'}</p>
+        <p class="hero-sub">${tabs.length ? `${tabs.length}個のタブ` : 'Orb'}</p>
       </section>
-      ${askCardHTML()}
+      <div class="ask-wrap">
+        ${askCardHTML()}
+        ${current ? currentTabHTML(current) : ''}
+      </div>
     </div>
 
-    ${
-      current
-        ? `<section class="current glass">
-            <div class="current-label">閲覧中のタブ</div>
-            <button class="current-main" data-action="open-tab" data-id="${current.id}">
-              ${favicon(current.url, 28)}
-              <span class="current-text"><strong>${esc(current.title)}</strong><small>${esc(hostOf(current.url))}</small></span>
-              ${ICON.open}
-            </button>
-            <div class="current-actions">
-              <button data-action="quick" data-prompt="要約">${ICON.sparkles}要約</button>
-              <button data-action="quick" data-prompt="要点">要点</button>
-              <button data-action="quick" data-prompt="翻訳">翻訳</button>
-              <button data-action="assistant">質問する</button>
-            </div>
-          </section>`
-        : ''
-    }
 
     ${
       pinned.length
@@ -441,6 +426,18 @@ function renderHome() {
   autosize(input);
   updateAskUI();
   if (focused) input.focus({ preventScroll: true });
+}
+
+/** Compact card for the tab you opened last; floats just under the box. */
+function currentTabHTML(tab) {
+  return `<section class="current glass">
+      <button class="current-main" data-action="open-tab" data-id="${tab.id}">
+        ${favicon(tab.url, 28)}
+        <span class="current-text"><small>閲覧中のタブ</small><strong>${esc(tab.title)}</strong></span>
+      </button>
+      <button class="current-ask" data-action="quick" data-prompt="要約">${ICON.sparkles}要約</button>
+      <button class="current-open" data-action="open-tab" data-id="${tab.id}" aria-label="開く">${ICON.open}</button>
+    </section>`;
 }
 
 function installBanner() {
@@ -507,7 +504,7 @@ function renderSidebar() {
 
   $('#sidebar').innerHTML = `
     <div class="sb-head">
-      <button class="sb-brand" data-action="new-tab"><span class="mini-orb"></span><strong>Kumo</strong></button>
+      <button class="sb-brand" data-action="new-tab"><span class="mini-orb"></span><strong>Orb</strong></button>
       <button class="sb-icon" data-action="close-sidebar" aria-label="サイドバーを閉じる">${ICON.sidebar}</button>
     </div>
 
@@ -809,7 +806,7 @@ function openAssistant({ question, skill, scope, tabIds } = {}) {
       <div class="grabber"></div>
       <div class="chat-head">
         <button class="icon-btn plain" data-new aria-label="新しいチャット">${ICON.compose}</button>
-        <strong>${ICON.sparkles} Kumo AI</strong>
+        <strong>${ICON.sparkles} Orb AI</strong>
         <button class="text-btn" data-close>閉じる</button>
       </div>
       <div class="segmented" role="tablist"></div>
@@ -1013,7 +1010,7 @@ function scrollChat() {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
 }
 
-// Links in answers open as tabs so they show up in Kumo.
+// Links in answers open as tabs so they show up in Orb.
 document.addEventListener('click', (e) => {
   const a = e.target.closest('.md a, a.source');
   if (!a) return;
@@ -1078,7 +1075,7 @@ function openSettings() {
       <div class="group">
         <label class="row"><input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-..." value="${esc(s.apiKey)}"></label>
       </div>
-      <p class="group-note">console.anthropic.com で発行できます。キーはこの端末のKumoの中にだけ保存され、Anthropic以外には送信されません。利用料はキーのアカウントに従量課金されます。</p>
+      <p class="group-note">console.anthropic.com で発行できます。キーはこの端末のOrbの中にだけ保存され、Anthropic以外には送信されません。利用料はキーのアカウントに従量課金されます。</p>
 
       <div class="group-title">AIアシスタント</div>
       <div class="group">
@@ -1096,13 +1093,13 @@ function openSettings() {
 
       <div class="group-title">ブラウジング</div>
       <div class="group">
-        <label class="row"><span>サイトの開き方</span><select name="openIn">${[['inapp', 'Kumoの上に開く'], ['safari', 'Safariアプリで開く']].map(([v, l]) => option(v, l, s.openIn)).join('')}</select></label>
+        <label class="row"><span>サイトの開き方</span><select name="openIn">${[['inapp', 'Orbの上に開く'], ['safari', 'Safariアプリで開く']].map(([v, l]) => option(v, l, s.openIn)).join('')}</select></label>
         <label class="row"><span>ブックマークバーを表示</span><input name="showBookmarks" type="checkbox" ${s.showBookmarks ? 'checked' : ''}></label>
         <label class="row"><span>検索エンジン</span><select name="engine">${Object.entries(ENGINES).map(([k, e]) => option(k, e.name, s.engine)).join('')}</select></label>
         <label class="row"><span>タブの自動アーカイブ</span><select name="archiveHours">${[[12, '12時間'], [24, '24時間'], [168, '7日間'], [0, 'しない']].map(([v, l]) => option(v, l, s.archiveHours)).join('')}</select></label>
       </div>
 
-      <p class="group-note">「Kumoの上に開く」は✕でKumoに戻れます。「Safariアプリで開く」はiOS 17以降で使え、Safariのタブ・ログイン状態のまま見られます。ピン留めしていないタブは指定時間使わないとアーカイブされます。</p>
+      <p class="group-note">「Orbの上に開く」は✕でOrbに戻れます。「Safariアプリで開く」はiOS 17以降で使え、Safariのタブ・ログイン状態のまま見られます。ピン留めしていないタブは指定時間使わないとアーカイブされます。</p>
 
       <div class="group-title">データ</div>
       <div class="group">
@@ -1110,7 +1107,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Kumo v0.6 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Orb v0.7 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>
@@ -1130,7 +1127,7 @@ function openSettings() {
   );
   $('[data-close]', el).addEventListener('click', popLayer);
   $('[data-export]', el).addEventListener('click', async () => {
-    const file = new File([store.exportData()], `kumo-backup-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
+    const file = new File([store.exportData()], `orb-backup-${new Date().toISOString().slice(0, 10)}.json`, { type: 'application/json' });
     if (navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file] }); } catch {}
     } else {
@@ -1180,4 +1177,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // Exposed for debugging in the console.
-window.kumo = { store, titleFromURL };
+window.orb = { store, titleFromURL };

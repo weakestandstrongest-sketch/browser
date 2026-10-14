@@ -1,5 +1,6 @@
 // Tabs, bookmarks and the archive, persisted in localStorage.
 
+// Storage keys keep the app's original name (Kumo) so existing data carries over.
 const STATE_KEY = 'kumo.state.v1';
 const SETTINGS_KEY = 'kumo.settings.v1';
 const ARCHIVE_LIMIT = 300;
@@ -29,7 +30,7 @@ const DEFAULT_SETTINGS = {
   archiveHours: 12,
   showBookmarks: true,
   theme: 'ocean',
-  openIn: 'inapp', // 'inapp' (Safari view on top of Kumo) | 'safari' (the Safari app)
+  openIn: 'inapp', // 'inapp' (Safari view on top of Orb) | 'safari' (the Safari app)
 };
 
 const DEFAULT_BOOKMARKS = [
@@ -64,7 +65,7 @@ function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
-    console.warn('Kumo: could not save', error);
+    console.warn('Orb: could not save', error);
   }
 }
 
@@ -263,12 +264,12 @@ export const store = {
   // ---- backup
 
   exportData() {
-    return JSON.stringify({ kumo: 2, state: this.state }, null, 2);
+    return JSON.stringify({ orb: 2, state: this.state }, null, 2);
   },
 
   importData(text) {
     const data = JSON.parse(text);
-    if (!data || !data.kumo || !data.state || !Array.isArray(data.state.tabs)) throw new Error('Kumoのバックアップではありません');
+    if (!data || !(data.orb || data.kumo) || !data.state || !Array.isArray(data.state.tabs)) throw new Error('Orbのバックアップではありません');
     this.state = { ...defaultState(), ...defined(migrateSpaces(data.state, {})) };
     this.commit();
   },

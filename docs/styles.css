@@ -674,44 +674,50 @@ kbd {
   transform: scale(0.92);
 }
 
-/* ---- current tab */
+/* ---- current tab: floats under the box so the orb and box stay centered */
+
+.ask-wrap {
+  position: relative;
+}
+
+.ask-wrap > .current {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 12px);
+  transition: opacity 0.2s, transform 0.2s var(--ease);
+}
+
+/* Make room for suggestions while the box is in use. */
+.ask-wrap:has(.ask-suggest:not(:empty)) > .current {
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
 
 .current {
-  border-radius: 22px;
-  padding: 14px;
-  margin-bottom: 22px;
-}
-
-.current-label,
-.section-head {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-3);
-}
-
-.current-label {
-  margin: 0 2px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+  padding: 8px 8px 8px 10px;
 }
 
 .current-main {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   text-align: left;
-}
-
-.current-main > svg {
-  color: var(--text-3);
 }
 
 .current-main .fav,
 .current-main .fav-fallback {
-  padding: 6px;
-  width: 40px !important;
-  height: 40px !important;
-  border-radius: 12px;
+  padding: 5px;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 11px;
   background: var(--surface-2);
 }
 
@@ -721,62 +727,58 @@ kbd {
 }
 
 .current-text {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+}
+
+.current-text small {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
 }
 
 .current-text strong {
   font-weight: 600;
-  font-size: 15px;
-}
-
-.current-text strong,
-.current-text small {
+  font-size: 14.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.current-text small {
-  color: var(--text-3);
-  font-size: 12px;
-}
-
-.current-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 14px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.current-actions button {
+.current-ask {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   height: 32px;
-  padding: 0 13px;
+  padding: 0 12px;
   border-radius: 16px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.current-actions button:first-child {
   color: #fff;
-  border-color: transparent;
   background: linear-gradient(140deg, var(--g1), var(--g2));
 }
 
-.current-actions svg {
+.current-ask svg {
   width: 14px;
   height: 14px;
+}
+
+.current-open {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  color: var(--text-3);
+}
+
+.current-open svg {
+  width: 17px;
+  height: 17px;
 }
 
 /* ---- pinned */
@@ -1625,7 +1627,6 @@ body.sidebar-open .sb-scrim {
 }
 
 .skills::-webkit-scrollbar,
-.current-actions::-webkit-scrollbar,
 .sb-themes::-webkit-scrollbar {
   display: none;
 }

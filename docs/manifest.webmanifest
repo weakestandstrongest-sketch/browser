@@ -1,6 +1,6 @@
 {
-  "name": "Kumo",
-  "short_name": "Kumo",
+  "name": "Orb",
+  "short_name": "Orb",
   "description": "Arc と Dia にインスパイアされた、AI付きの自分専用ブラウザ",
   "lang": "ja",
   "start_url": "./",

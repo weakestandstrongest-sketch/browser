@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef0ff"/><stop offset="1" stop-color="#dff7ff"/></linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="90"/></filter>
+    <radialGradient id="o1" cx="30%" cy="65%" r="75%"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="o2" cx="72%" cy="78%" r="60%"><stop offset="0" stop-color="#2ec5f0"/><stop offset="1" stop-color="#2ec5f0" stop-opacity="0"/></radialGradient>
+    <radialGradient id="o3" cx="75%" cy="25%" r="55%"><stop offset="0" stop-color="#f472b6" stop-opacity=".9"/><stop offset="1" stop-color="#f472b6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="hl" cx="33%" cy="27%" r="27%"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="shade" cx="50%" cy="45%" r="55%"><stop offset=".75" stop-color="#1b1446" stop-opacity="0"/><stop offset="1" stop-color="#1b1446" stop-opacity=".35"/></radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g filter="url(#blur)" opacity=".75">
+    <circle cx="230" cy="250" r="260" fill="#a5b4fc"/>
+    <circle cx="820" cy="380" r="240" fill="#67e8f9"/>
+    <circle cx="380" cy="880" r="260" fill="#f9a8d4"/>
+  </g>
+  <circle cx="512" cy="512" r="290" fill="#5b4bd6"/>
+  <circle cx="512" cy="512" r="290" fill="url(#o1)"/>
+  <circle cx="512" cy="512" r="290" fill="url(#o2)"/>
+  <circle cx="512" cy="512" r="290" fill="url(#o3)"/>
+  <circle cx="512" cy="512" r="290" fill="url(#shade)"/>
+  <circle cx="512" cy="512" r="290" fill="url(#hl)"/>
+</svg>

@@ -172,16 +172,17 @@ function actionSheet(title, actions) {
 
 // ---------------------------------------------------------------- main screen
 
-/** Draft of the home "Ask anything" box: text plus tabs attached as context (Dia's "Add tabs"). */
+/** Draft of the home box: text plus tabs attached as context (Dia's "Add tabs"). */
 const askDraft = { text: '', tabIds: [], mode: null }; // mode: null = auto, 'search' | 'ai'
 let askSuggestions = [];
+let askFocused = false;
 
 function renderShell() {
   app.innerHTML = `
     <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
     <header class="topbar">
       <div class="topbar-row">
-        <button class="space-pill glass" data-action="space-switcher" id="space-pill"></button>
+        <button class="brand" data-action="new-tab" aria-label="新しいタブ"><span class="mini-orb"></span><strong>Kumo</strong></button>
         <span class="spacer"></span>
         <button class="icon-btn glass" data-action="settings" aria-label="設定">${ICON.settings}</button>
       </div>
@@ -191,7 +192,7 @@ function renderShell() {
     <nav class="dock">
       <div class="dock-inner">
         <button class="dock-btn" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
-        <button class="dock-search" data-action="command">${ICON.search}<span>検索・URL</span></button>
+        <button class="dock-search" data-action="new-tab">${ICON.plus}<span>新しいタブ</span></button>
         <button class="dock-btn dock-ai" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
       </div>
     </nav>
@@ -219,7 +220,17 @@ function renderShell() {
     e.preventDefault();
     submitAsk();
   });
-  enableSpaceSwipe($('#home'));
+  app.addEventListener('focusin', (e) => {
+    if (!e.target.matches('.ask-input')) return;
+    askFocused = true;
+    updateAskUI();
+  });
+  app.addEventListener('focusout', (e) => {
+    if (!e.target.matches('.ask-input')) return;
+    askFocused = false;
+    // Wait so a tap on a suggestion still lands before the list collapses.
+    setTimeout(() => !askFocused && updateAskUI(), 250);
+  });
   enableSidebarGestures();
 }
 
@@ -229,20 +240,17 @@ function autosize(textarea) {
 }
 
 function render() {
-  const space = store.currentSpace;
-  const [g1, g2] = THEMES[space.theme] || THEMES.ocean;
+  const [g1, g2] = store.theme.colors;
   document.documentElement.style.setProperty('--g1', g1);
   document.documentElement.style.setProperty('--g2', g2);
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', bg || g1);
-  renderTopbar();
+  renderBookmarks();
   renderHome();
   renderSidebar();
 }
 
-function renderTopbar() {
-  const space = store.currentSpace;
-  $('#space-pill').innerHTML = `<span>${esc(space.emoji)}</span><strong>${esc(space.name)}</strong>${ICON.chevron}`;
+function renderBookmarks() {
   const bar = $('#bookmarks');
   bar.hidden = !store.settings.showBookmarks;
   bar.innerHTML =
@@ -252,6 +260,14 @@ function renderTopbar() {
           ${favicon(b.url, 16)}<span>${esc(b.title)}</span></button>`
       )
       .join('') + `<button class="bookmark add" data-action="add-bookmark" aria-label="ブックマークを追加">${ICON.plus}</button>`;
+}
+
+/** "+ New tab": the start page with the cursor in the box, ready to type. */
+function newTab() {
+  setSidebar(false);
+  const input = $('.ask-input');
+  input?.focus({ preventScroll: true });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function greeting() {
@@ -264,7 +280,7 @@ function askCardHTML() {
   const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
   return `<form class="ask-card">
       <div class="ask-row">
-        <textarea class="ask-input" rows="1" enterkeyhint="go" autocapitalize="off" placeholder="検索、またはAIに質問…">${esc(askDraft.text)}</textarea>
+        <textarea class="ask-input" rows="1" enterkeyhint="go" autocapitalize="off" placeholder="検索、URL、またはAIに質問…">${esc(askDraft.text)}</textarea>
       </div>
       ${
         attached.length
@@ -296,6 +312,32 @@ function resolveAskKind() {
   return text && looksLikeQuestion(text) ? 'ask' : 'search';
 }
 
+function buildSuggestions(q) {
+  const items = [];
+  const url = parseURL(q);
+  if (url) items.push({ kind: 'open', url, icon: ICON.globe, title: url, subtitle: 'サイトを開く' });
+  const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
+  items.push({ kind: 'search', query: q, icon: ICON.search, title: q, subtitle: `${engine}で検索` });
+  items.push({ kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Kumo AIに聞く' });
+  const lower = q.toLowerCase();
+  store.tabs
+    .filter((t) => t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
+    .slice(0, 4)
+    .forEach((tab) => items.push({ kind: 'tab', tab, icon: favicon(tab.url, 18), title: tab.title, subtitle: `タブを開く · ${hostOf(tab.url)}` }));
+  return items;
+}
+
+/** Shown while the empty box has focus: paste a copied link, or jump back to a recent tab. */
+function idleSuggestions() {
+  return [
+    { kind: 'paste', icon: ICON.clipboard, title: 'コピーしたリンクを貼り付け', subtitle: 'Safariで見ていたページをAIに聞けます' },
+    ...store.tabs
+      .filter((t) => !t.pinned)
+      .slice(0, 4)
+      .map((tab) => ({ kind: 'tab', tab, icon: favicon(tab.url, 18), title: tab.title, subtitle: `最近のタブ · ${hostOf(tab.url)}` })),
+  ];
+}
+
 function updateAskUI() {
   const card = $('.ask-card');
   if (!card) return;
@@ -309,29 +351,30 @@ function updateAskUI() {
   });
   $('.ask-send', card).innerHTML = kind === 'open' ? ICON.open : kind === 'search' ? ICON.search : ICON.send;
 
-  if (!text) {
-    askSuggestions = [];
-    $('.ask-suggest', card).innerHTML = '';
-    return;
+  let rows = [];
+  if (text) {
+    rows = buildSuggestions(text);
+    const index = rows.findIndex((s) => s.kind === kind);
+    if (index > 0) rows.unshift(rows.splice(index, 1)[0]);
+    rows = rows.slice(0, 6);
+  } else if (askFocused) {
+    rows = idleSuggestions();
   }
-  const items = buildSuggestions(text);
-  const index = items.findIndex((s) => s.kind === kind);
-  if (index > 0) items.unshift(items.splice(index, 1)[0]);
-  askSuggestions = items.slice(0, 6);
-  $('.ask-suggest', card).innerHTML = askSuggestions
-    .map(
-      (s, i) => `<button type="button" class="sug-row ${i === 0 ? 'is-default' : ''} ${s.kind}" data-action="ask-suggest" data-i="${i}">
+  askSuggestions = rows;
+  $('.ask-suggest', card).innerHTML = rows
+    .map((s, i) => {
+      const isDefault = !!text && i === 0;
+      return `<button type="button" class="sug-row ${isDefault ? 'is-default' : ''} ${s.kind}" data-action="ask-suggest" data-i="${i}">
         <span class="sug-icon">${s.icon}</span>
         <span class="sug-text"><strong>${esc(s.title)}</strong><small>${esc(s.subtitle)}</small></span>
-        ${i === 0 ? '<kbd>↵</kbd>' : ''}
-      </button>`
-    )
+        ${isDefault ? '<kbd>↵</kbd>' : ''}
+      </button>`;
+    })
     .join('');
 }
 
 function renderHome() {
-  const space = store.currentSpace;
-  const tabs = store.tabsIn();
+  const tabs = store.tabs;
   const pinned = tabs.filter((t) => t.pinned);
   const today = tabs.filter((t) => !t.pinned);
   const current = store.currentTab;
@@ -342,7 +385,7 @@ function renderHome() {
     <section class="hero">
       <div class="orb"></div>
       <h1 class="greet">${greeting()}</h1>
-      <p class="hero-sub">${esc(space.name)} · ${tabs.length ? `${tabs.length}個のタブ` : 'タブなし'}</p>
+      <p class="hero-sub">${tabs.length ? `${tabs.length}個のタブ` : 'Kumo'}</p>
     </section>
 
     ${askCardHTML()}
@@ -387,18 +430,18 @@ function renderHome() {
           ? `<div class="tab-list glass">${today.map(tabRow).join('')}</div>`
           : `<div class="empty glass">
               <p><strong>タブはまだありません</strong></p>
-              <p>下の検索バーやブックマークからサイトを開くと、ここにタブとして並びます。ピン留めしていないタブは${
+              <p>上の入力欄やブックマークからサイトを開くと、ここにタブとして並びます。ピン留めしていないタブは${
                 Number(store.settings.archiveHours) ? `${store.settings.archiveHours}時間` : '…'
               }使わないと自動でアーカイブされます。</p>
             </div>`
       }
     </section>
-    <p class="hint">左端からスワイプでサイドバー　·　左右スワイプでスペース切替</p>`;
+    <p class="hint">左端からスワイプでサイドバー</p>`;
 
   const input = $('.ask-input');
   autosize(input);
   updateAskUI();
-  if (focused) input.focus();
+  if (focused) input.focus({ preventScroll: true });
 }
 
 function tabRow(t) {
@@ -424,41 +467,61 @@ function installBanner() {
     </section>`;
 }
 
-/** Runs a home-box action: open a URL, search with the chosen engine, ask the AI, or jump to a tab. */
+/** Runs a home-box action: open a URL, search with the chosen engine, ask the AI, or open a tab. */
 function runAsk(suggestion) {
-  const text = askDraft.text.trim();
-  const tabIds = askDraft.tabIds.filter((id) => store.findTab(id));
   const kind = suggestion?.kind || resolveAskKind();
-  if (!text && kind !== 'tab') return;
+  if (kind === 'paste') return pasteIntoAsk();
+  if (kind === 'tab') return openTab(suggestion.tab);
+  const text = askDraft.text.trim();
+  if (!text) return;
+  const tabIds = askDraft.tabIds.filter((id) => store.findTab(id));
   askDraft.text = '';
   askDraft.tabIds = [];
   askDraft.mode = null;
   $('.ask-input')?.blur();
   if (kind === 'open') openURL(suggestion?.url || parseURL(text));
   else if (kind === 'search') openURL(searchURL(suggestion?.query || text));
-  else if (kind === 'tab') openTab(suggestion.tab);
   else openAssistant({ question: suggestion?.query || text, tabIds });
   renderHome();
 }
 
 function submitAsk() {
-  runAsk(askSuggestions[0]);
+  runAsk(askDraft.text.trim() ? askSuggestions[0] : null);
+}
+
+/** A copied link becomes a tab attached to the box, so the next question is about that page. */
+async function pasteIntoAsk() {
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (!text) return toast('クリップボードが空です');
+    const url = parseURL(text);
+    if (url) {
+      const tab = store.touchTab(url);
+      askDraft.tabIds = [...new Set([...askDraft.tabIds, tab.id])];
+      askDraft.mode = 'ai';
+      renderHome();
+      toast('タブに追加して添付しました');
+    } else {
+      askDraft.text = text;
+      renderHome();
+    }
+    $('.ask-input')?.focus({ preventScroll: true });
+  } catch {
+    toast('クリップボードを読めませんでした');
+  }
 }
 
 // ---------------------------------------------------------------- sidebar (Arc / Dia style)
 
 function renderSidebar() {
-  const space = store.currentSpace;
-  const tabs = store.tabsIn();
+  const tabs = store.tabs;
   const pinned = tabs.filter((t) => t.pinned);
   const today = tabs.filter((t) => !t.pinned);
   const currentId = store.currentTab?.id;
 
   $('#sidebar').innerHTML = `
     <div class="sb-head">
-      <button class="sb-space" data-action="space-switcher">
-        <span class="sb-space-emoji">${esc(space.emoji)}</span><strong>${esc(space.name)}</strong>${ICON.chevron}
-      </button>
+      <button class="sb-brand" data-action="new-tab"><span class="mini-orb"></span><strong>Kumo</strong></button>
       <button class="sb-icon" data-action="close-sidebar" aria-label="サイドバーを閉じる">${ICON.sidebar}</button>
     </div>
 
@@ -471,6 +534,7 @@ function renderSidebar() {
     }
 
     <div class="sb-tabs">
+      <button class="sb-new" data-action="new-tab">${ICON.plus}<span>新しいタブ</span></button>
       ${today
         .map(
           (t) => `<div class="sb-tab ${t.id === currentId ? 'active' : ''}">
@@ -479,20 +543,19 @@ function renderSidebar() {
           </div>`
         )
         .join('')}
-      <button class="sb-new" data-action="command">${ICON.plus}<span>新しいタブ</span></button>
-      ${pinned.length || today.length ? '' : '<p class="sb-empty">タブを長押しすると、ピン留めや移動ができます。</p>'}
+      ${pinned.length || today.length ? '' : '<p class="sb-empty">タブを長押しすると、ピン留めやブックマークへの追加ができます。</p>'}
     </div>
 
     <div class="sb-foot">
       <button class="sb-icon" data-action="archive" aria-label="アーカイブ">${ICON.archive}</button>
-      <div class="sb-spaces">
-        ${store.state.spaces
+      <div class="sb-themes" role="radiogroup" aria-label="テーマカラー">
+        ${Object.entries(THEMES)
           .map(
-            (s) => `<button class="sb-dot ${s.id === space.id ? 'active' : ''}" data-action="space" data-id="${s.id}" aria-label="${esc(s.name)}"
-              style="--c1:${THEMES[s.theme]?.[0]}">${esc(s.emoji)}</button>`
+            ([key, t]) => `<button class="sb-theme ${key === store.settings.theme ? 'active' : ''}" data-action="theme" data-id="${key}"
+              role="radio" aria-checked="${key === store.settings.theme}" aria-label="${esc(t.name)}"
+              style="background:linear-gradient(140deg,${t.colors[0]},${t.colors[1]})"></button>`
           )
           .join('')}
-        <button class="sb-dot add" data-action="new-space" aria-label="スペースを追加">${ICON.plus}</button>
       </div>
       <button class="sb-icon" data-action="settings" aria-label="設定">${ICON.settings}</button>
     </div>`;
@@ -532,9 +595,8 @@ function onAppClick(e) {
   const id = el.dataset.id;
   const inSidebar = !!el.closest('.sidebar');
   switch (el.dataset.action) {
-    case 'command':
-      if (inSidebar) setSidebar(false);
-      openCommandBar();
+    case 'new-tab':
+      newTab();
       break;
     case 'assistant':
       openAssistant();
@@ -551,15 +613,8 @@ function onAppClick(e) {
     case 'close-sidebar':
       setSidebar(false);
       break;
-    case 'space-switcher':
-      spaceSwitcher();
-      break;
-    case 'space':
-      if (id === store.state.currentSpaceId) spaceMenu(store.currentSpace);
-      else store.switchSpace(id);
-      break;
-    case 'new-space':
-      openSpaceEditor();
+    case 'theme':
+      store.saveSettings({ theme: id });
       break;
     case 'open-tab': {
       const tab = store.findTab(id);
@@ -595,17 +650,17 @@ function onAppClick(e) {
     case 'attach':
       pickTabs();
       break;
-    case 'ask-mode':
-      askDraft.mode = el.dataset.mode;
-      updateAskUI();
-      $('.ask-input')?.focus();
-      break;
-    case 'ask-suggest':
-      runAsk(askSuggestions[Number(el.dataset.i)]);
-      break;
     case 'detach':
       askDraft.tabIds = askDraft.tabIds.filter((t) => t !== id);
       renderHome();
+      break;
+    case 'ask-mode':
+      askDraft.mode = el.dataset.mode;
+      updateAskUI();
+      $('.ask-input')?.focus({ preventScroll: true });
+      break;
+    case 'ask-suggest':
+      runAsk(askSuggestions[Number(el.dataset.i)]);
       break;
     case 'dismiss-install':
       localStorage.setItem('kumo.installHintDismissed', '1');
@@ -647,28 +702,7 @@ function enableLongPress() {
   });
 }
 
-function enableSpaceSwipe(el) {
-  let start = null;
-  el.addEventListener('touchstart', (e) => {
-    const t = e.touches[0];
-    // Touches near the left edge belong to the sidebar gesture.
-    start = t.clientX < 28 ? null : { x: t.clientX, y: t.clientY };
-  }, { passive: true });
-  el.addEventListener('touchend', (e) => {
-    if (!start) return;
-    const dx = e.changedTouches[0].clientX - start.x;
-    const dy = e.changedTouches[0].clientY - start.y;
-    start = null;
-    if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 2) {
-      el.classList.add(dx < 0 ? 'slide-left' : 'slide-right');
-      setTimeout(() => el.classList.remove('slide-left', 'slide-right'), 300);
-      store.switchSpaceBy(dx < 0 ? 1 : -1);
-    }
-  }, { passive: true });
-}
-
 function tabMenu(tab) {
-  const others = store.state.spaces.filter((s) => s.id !== tab.spaceId);
   const bookmarked = store.isBookmarked(tab.url);
   actionSheet(tab.title, [
     { label: 'AIにこのページについて聞く', run: () => { store.useTab(tab); openAssistant({ scope: 'tab' }); } },
@@ -681,7 +715,6 @@ function tabMenu(tab) {
       },
     },
     { label: '名前を変更', run: () => { const t = prompt('タブの名前', tab.title); if (t !== null) store.renameTab(tab, t); } },
-    ...(others.length ? [{ label: '別のスペースへ移動', run: () => actionSheet('移動先', others.map((s) => ({ label: `${s.emoji} ${s.name}`, run: () => store.moveTab(tab, s.id) }))) }] : []),
     { label: 'リンクをコピー', run: () => navigator.clipboard?.writeText(tab.url).then(() => toast('コピーしました')) },
     { label: '閉じる（アーカイブへ）', destructive: true, run: () => store.closeTab(tab) },
   ]);
@@ -706,7 +739,7 @@ function addBookmarkMenu() {
     const raw = prompt('ブックマークするURL', 'https://');
     const url = raw && parseURL(raw);
     if (!url) return raw && toast('URLが正しくありません');
-    const title = prompt('名前', titleFromURL(url).replace(/^🔎 /, ''));
+    const title = prompt('名前', titleFromURL(url));
     store.addBookmark(url, title || undefined);
   };
   if (!current || store.isBookmarked(current.url)) return fromURL();
@@ -716,28 +749,10 @@ function addBookmarkMenu() {
   ]);
 }
 
-function spaceSwitcher() {
-  const { spaces, currentSpaceId } = store.state;
-  actionSheet('スペース', [
-    ...spaces.map((s) => ({ label: `${s.id === currentSpaceId ? '✓ ' : ''}${s.emoji} ${s.name}`, run: () => store.switchSpace(s.id) })),
-    { label: '＋ 新しいスペース', run: () => openSpaceEditor() },
-    { label: 'このスペースを編集', run: () => spaceMenu(store.currentSpace) },
-  ]);
-}
-
-function spaceMenu(space) {
-  actionSheet(`${space.emoji} ${space.name}`, [
-    { label: 'スペースを編集', run: () => openSpaceEditor(space) },
-    ...(store.state.spaces.length > 1
-      ? [{ label: 'スペースを削除', destructive: true, run: () => { if (confirm(`「${space.name}」を削除しますか？タブはアーカイブに移動します。`)) store.deleteSpace(space); } }]
-      : []),
-  ]);
-}
-
-/** Choose tabs to attach to the home ask box. */
+/** Choose tabs to attach to the home box. */
 function pickTabs() {
-  const tabs = store.tabsIn();
-  if (!tabs.length) return toast('このスペースにはまだタブがありません');
+  const tabs = store.tabs;
+  if (!tabs.length) return toast('まだタブがありません');
   const selected = new Set(askDraft.tabIds);
   const el = pushLayer(
     'sheet-layer',
@@ -763,106 +778,6 @@ function pickTabs() {
   sync();
 }
 
-// ---------------------------------------------------------------- command bar (smart address bar)
-
-function openCommandBar(initial = '') {
-  const el = pushLayer(
-    'command-layer',
-    `<div class="command">
-      <form class="command-head">
-        <label class="command-field">${ICON.search}
-          <input type="search" enterkeyhint="go" autocomplete="off" autocapitalize="off" spellcheck="false"
-            placeholder="検索、URL、またはAIに質問" value="${esc(initial)}">
-        </label>
-        <button type="button" class="text-btn" data-close>キャンセル</button>
-      </form>
-      <div class="command-list"></div>
-    </div>`
-  );
-  const input = $('input', el);
-  const list = $('.command-list', el);
-  let suggestions = [];
-
-  const update = () => {
-    const q = input.value.trim();
-    suggestions = buildSuggestions(q);
-    if (!q) {
-      const recent = store.tabsIn().slice(0, 6);
-      list.innerHTML = `
-        <button class="cmd-row" data-paste>${ICON.clipboard}<span><strong>コピーしたURLを開く・AIに聞く</strong><small>Safariで見ているページのリンクをコピーしてからタップ</small></span></button>
-        ${recent.length ? `<div class="cmd-section">このスペースのタブ</div>` : ''}
-        ${recent.map((t) => `<button class="cmd-row" data-tab="${t.id}">${favicon(t.url, 20)}<span><strong>${esc(t.title)}</strong><small>${esc(hostOf(t.url))}</small></span></button>`).join('')}
-        <p class="cmd-tip">✨「?」で終わる文や「〜を教えて」はAIへの質問として扱います</p>`;
-      return;
-    }
-    list.innerHTML = suggestions
-      .map(
-        (s, i) => `<button class="cmd-row ${s.kind === 'ask' ? 'ask' : ''}" data-i="${i}">${s.icon}<span><strong>${esc(s.title)}</strong><small>${esc(s.subtitle)}</small></span></button>`
-      )
-      .join('');
-  };
-
-  const run = (s) => {
-    popLayer();
-    if (s.kind === 'open') openURL(s.url);
-    else if (s.kind === 'search') openURL(searchURL(s.query));
-    else if (s.kind === 'ask') setTimeout(() => openAssistant({ question: s.query }), 260);
-    else if (s.kind === 'tab') openTab(s.tab);
-  };
-
-  input.addEventListener('input', update);
-  $('form', el).addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (suggestions[0]) run(suggestions[0]);
-  });
-  $('[data-close]', el).addEventListener('click', popLayer);
-  list.addEventListener('click', async (e) => {
-    const row = e.target.closest('.cmd-row');
-    if (!row) return;
-    if (row.dataset.i) return run(suggestions[Number(row.dataset.i)]);
-    if (row.dataset.tab) {
-      const tab = store.findTab(row.dataset.tab);
-      if (tab) run({ kind: 'tab', tab });
-      return;
-    }
-    if (row.hasAttribute('data-paste')) {
-      try {
-        const text = (await navigator.clipboard.readText()).trim();
-        if (!text) return toast('クリップボードが空です');
-        input.value = text;
-        update();
-        const url = parseURL(text);
-        if (url) {
-          store.touchTab(url);
-          popLayer();
-          toast('タブに追加しました。AIで要約できます');
-        }
-      } catch {
-        toast('クリップボードを読めませんでした');
-      }
-    }
-  });
-  update();
-  setTimeout(() => input.focus(), 50);
-}
-
-function buildSuggestions(q) {
-  if (!q) return [];
-  const items = [];
-  const url = parseURL(q);
-  if (url) items.push({ kind: 'open', url, icon: ICON.globe, title: url, subtitle: 'サイトを開く' });
-  const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
-  const search = { kind: 'search', query: q, icon: ICON.search, title: q, subtitle: `${engine}で検索` };
-  const ask = { kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Kumo AIに聞く' };
-  items.push(...(looksLikeQuestion(q) ? [ask, search] : [search, ask]));
-  const lower = q.toLowerCase();
-  store.tabsIn()
-    .filter((t) => t.title.toLowerCase().includes(lower) || t.url.toLowerCase().includes(lower))
-    .slice(0, 5)
-    .forEach((tab) => items.push({ kind: 'tab', tab, icon: favicon(tab.url, 20), title: tab.title, subtitle: `タブに切り替え · ${hostOf(tab.url)}` }));
-  return items;
-}
-
 // ---------------------------------------------------------------- AI assistant (Dia-style chat with tabs)
 
 const SKILLS = {
@@ -878,7 +793,7 @@ const chat = {
   conversation: null,
   items: [], // { role, text, status, sources: Map, error }
   controller: null,
-  scope: null, // 'tab' | 'space' | 'picked' | 'none'
+  scope: null, // 'tab' | 'all' | 'picked' | 'none'
   pickedIds: [], // tabs attached from the home ask box
   el: null,
 };
@@ -938,7 +853,7 @@ function openAssistant({ question, skill, scope, tabIds } = {}) {
   el.querySelectorAll('[data-skill]').forEach((b) =>
     b.addEventListener('click', () => {
       const name = b.dataset.skill;
-      if (name === '比較') chat.scope = 'space';
+      if (name === '比較') chat.scope = 'all';
       else if (chat.scope === 'none' && store.currentTab) chat.scope = 'tab';
       sendChat(SKILLS[name]);
     })
@@ -979,10 +894,10 @@ function contextFor(scope) {
   if (scope === 'picked' && pickedTabs().length) {
     return `[ユーザーが添付したタブ]\n${pickedTabs().map((t, i) => `${i + 1}. ${t.title} — ${t.url}`).join('\n')}`;
   }
-  if (scope === 'space') {
-    const tabs = store.tabsIn();
+  if (scope === 'all') {
+    const tabs = store.tabs;
     if (!tabs.length) return '';
-    return `[このスペースで開いているタブ]\n${tabs.map((t, i) => `${i + 1}. ${t.title} — ${t.url}`).join('\n')}`;
+    return `[開いているタブ]\n${tabs.map((t, i) => `${i + 1}. ${t.title} — ${t.url}`).join('\n')}`;
   }
   return '';
 }
@@ -1065,7 +980,7 @@ function renderChat() {
   const scopes = [
     ['tab', '閲覧中のタブ'],
     ...(picked.length ? [['picked', `添付 ${picked.length}`]] : []),
-    ['space', '全タブ'],
+    ['all', '全タブ'],
     ['none', 'タブなし'],
   ];
   $('.segmented', el).innerHTML = scopes
@@ -1079,8 +994,8 @@ function renderChat() {
         ? `「${t.title}」について`
         : chat.scope === 'picked'
           ? `添付した${picked.length}個のタブについて`
-          : chat.scope === 'space'
-            ? `${store.currentSpace.name}の${store.tabsIn().length}個のタブについて`
+          : chat.scope === 'all'
+            ? `開いている${store.tabs.length}個のタブについて`
             : '何でも';
     items.innerHTML = `<div class="chat-empty">
         <div class="chat-empty-icon">${ICON.sparkles}</div>
@@ -1116,43 +1031,6 @@ document.addEventListener('click', (e) => {
   e.preventDefault();
   openURL(a.href);
 });
-
-// ---------------------------------------------------------------- spaces editor
-
-function openSpaceEditor(space = null) {
-  const emojis = ['🏠', '💼', '📚', '🎮', '🛒', '✈️', '🎨', '🍳', '💻', '🎵', '✨', '🌱'];
-  let emoji = space?.emoji || '✨';
-  let theme = space?.theme || 'grape';
-  const el = pushLayer(
-    'sheet-layer',
-    `<div class="sheet form-sheet">
-      <div class="chat-head">
-        <button class="text-btn" data-close>キャンセル</button>
-        <strong>${space ? 'スペースを編集' : '新しいスペース'}</strong>
-        <button class="text-btn strong" data-save>${space ? '保存' : '作成'}</button>
-      </div>
-      <label class="field"><span>名前</span><input name="name" placeholder="例: 仕事、趣味、勉強" value="${esc(space?.name || '')}"></label>
-      <div class="field"><span>アイコン</span><div class="emoji-grid">${emojis.map((e) => `<button data-emoji="${e}">${e}</button>`).join('')}</div></div>
-      <div class="field"><span>カラー</span><div class="theme-grid">${Object.entries(THEMES)
-        .map(([key, [a, b]]) => `<button data-theme="${key}" style="background:linear-gradient(135deg,${a},${b})" aria-label="${key}"></button>`)
-        .join('')}</div></div>
-    </div>`
-  );
-  const sync = () => {
-    el.querySelectorAll('[data-emoji]').forEach((b) => b.classList.toggle('active', b.dataset.emoji === emoji));
-    el.querySelectorAll('[data-theme]').forEach((b) => b.classList.toggle('active', b.dataset.theme === theme));
-  };
-  el.querySelectorAll('[data-emoji]').forEach((b) => b.addEventListener('click', () => { emoji = b.dataset.emoji; sync(); }));
-  el.querySelectorAll('[data-theme]').forEach((b) => b.addEventListener('click', () => { theme = b.dataset.theme; sync(); }));
-  $('[data-close]', el).addEventListener('click', popLayer);
-  $('[data-save]', el).addEventListener('click', () => {
-    const name = $('input[name=name]', el).value;
-    if (space) store.updateSpace(space, { name: name.trim() || space.name, emoji, theme });
-    else store.addSpace(name, emoji, theme);
-    popLayer();
-  });
-  sync();
-}
 
 // ---------------------------------------------------------------- archive
 
@@ -1221,6 +1099,12 @@ function openSettings() {
       </div>
       <p class="group-note">Web検索をオフにするとページの中身を読めなくなります。変更は「新しいチャット」から反映されます。</p>
 
+      <div class="group-title">テーマカラー</div>
+      <div class="group theme-group"><div class="theme-grid">${Object.entries(THEMES)
+        .map(([key, t]) => `<button type="button" data-theme="${key}" class="${key === s.theme ? 'active' : ''}" aria-label="${esc(t.name)}"
+          style="background:linear-gradient(140deg,${t.colors[0]},${t.colors[1]})"></button>`)
+        .join('')}</div><span class="theme-name">${esc(store.theme.name)}</span></div>
+
       <div class="group-title">ブラウジング</div>
       <div class="group">
         <label class="row"><span>ブックマークバーを表示</span><input name="showBookmarks" type="checkbox" ${s.showBookmarks ? 'checked' : ''}></label>
@@ -1234,7 +1118,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Kumo v0.4 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Kumo v0.5 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>
@@ -1243,6 +1127,13 @@ function openSettings() {
       store.saveSettings({ [input.name]: value });
       if (input.name === 'archiveHours') store.archiveStaleTabs();
       if (input.name === 'apiKey' && value) toast('APIキーを保存しました');
+    })
+  );
+  el.querySelectorAll('[data-theme]').forEach((b) =>
+    b.addEventListener('click', () => {
+      store.saveSettings({ theme: b.dataset.theme });
+      el.querySelectorAll('[data-theme]').forEach((x) => x.classList.toggle('active', x === b));
+      $('.theme-name', el).textContent = store.theme.name;
     })
   );
   $('[data-close]', el).addEventListener('click', popLayer);
@@ -1269,7 +1160,7 @@ function openSettings() {
     }
   });
   $('[data-reset]', el).addEventListener('click', () => {
-    if (!confirm('タブ・スペース・アーカイブ・APIキーをすべて消去します。よろしいですか？')) return;
+    if (!confirm('タブ・ブックマーク・アーカイブ・APIキーをすべて消去します。よろしいですか？')) return;
     localStorage.clear();
     location.reload();
   });

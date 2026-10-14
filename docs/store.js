@@ -1,16 +1,16 @@
-// Spaces, tabs and the archive, persisted in localStorage.
+// Tabs, bookmarks and the archive, persisted in localStorage.
 
 const STATE_KEY = 'kumo.state.v1';
 const SETTINGS_KEY = 'kumo.settings.v1';
 const ARCHIVE_LIMIT = 300;
 
 export const THEMES = {
-  ocean: ['#4f7cff', '#2ec5f0'],
-  grape: ['#8b5cf6', '#e879f9'],
-  sunset: ['#ff6b4a', '#ffb547'],
-  forest: ['#10b981', '#a3e635'],
-  rose: ['#f43f5e', '#fb923c'],
-  midnight: ['#6366f1', '#64748b'],
+  ocean: { name: 'オーシャン', colors: ['#4f7cff', '#2ec5f0'] },
+  grape: { name: 'グレープ', colors: ['#8b5cf6', '#e879f9'] },
+  sunset: { name: 'サンセット', colors: ['#ff6b4a', '#ffb547'] },
+  forest: { name: 'フォレスト', colors: ['#10b981', '#a3e635'] },
+  rose: { name: 'ローズ', colors: ['#f43f5e', '#fb923c'] },
+  midnight: { name: 'ミッドナイト', colors: ['#6366f1', '#64748b'] },
 };
 
 export const ENGINES = {
@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
   engine: 'google',
   archiveHours: 12,
   showBookmarks: true,
+  theme: 'ocean',
 };
 
 const DEFAULT_BOOKMARKS = [
@@ -42,13 +43,10 @@ const DEFAULT_BOOKMARKS = [
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 
 function defaultState() {
-  const home = { id: uid(), name: 'ホーム', emoji: '🏠', theme: 'ocean' };
   return {
-    spaces: [home],
-    currentSpaceId: home.id,
     tabs: [],
     archived: [],
-    currentTabBySpace: {},
+    currentTabId: null,
     bookmarks: DEFAULT_BOOKMARKS.map(([url, title]) => ({ id: uid(), url, title })),
   };
 }
@@ -69,18 +67,41 @@ function write(key, value) {
   }
 }
 
+/** Data saved by v0.4 and earlier had Arc-style spaces; fold them into one tab list. */
+function migrateSpaces(saved, settings) {
+  if (!Array.isArray(saved.spaces)) return saved;
+  const current = saved.spaces.find((s) => s.id === saved.currentSpaceId) || saved.spaces[0];
+  if (current?.theme && !settings.theme) settings.theme = current.theme;
+  const seen = new Set();
+  const tabs = (saved.tabs || []).filter((t) => !seen.has(t.url) && seen.add(t.url)).map(({ spaceId, ...t }) => t);
+  return {
+    tabs,
+    archived: (saved.archived || []).map(({ spaceId, ...a }) => a),
+    currentTabId: saved.currentTabBySpace?.[current?.id] || null,
+    bookmarks: saved.bookmarks,
+  };
+}
+
+const defined = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
 export const store = {
   state: defaultState(),
   settings: { ...DEFAULT_SETTINGS },
   listeners: new Set(),
 
   load() {
+    const savedSettings = read(SETTINGS_KEY) || {};
     const saved = read(STATE_KEY);
-    if (saved && Array.isArray(saved.spaces) && saved.spaces.length) this.state = { ...defaultState(), ...saved };
-    this.settings = { ...DEFAULT_SETTINGS, ...(read(SETTINGS_KEY) || {}) };
-    if (!this.state.spaces.some((s) => s.id === this.state.currentSpaceId)) {
-      this.state.currentSpaceId = this.state.spaces[0].id;
+    if (saved) {
+      const migrated = migrateSpaces(saved, savedSettings);
+      this.state = { ...defaultState(), ...defined(migrated) };
+      if (migrated !== saved) {
+        write(STATE_KEY, this.state);
+        write(SETTINGS_KEY, { ...DEFAULT_SETTINGS, ...savedSettings });
+      }
     }
+    this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+    if (!THEMES[this.settings.theme]) this.settings.theme = 'ocean';
   },
 
   subscribe(fn) {
@@ -98,56 +119,49 @@ export const store = {
     this.listeners.forEach((fn) => fn());
   },
 
-  // ---- queries
-
-  get currentSpace() {
-    return this.state.spaces.find((s) => s.id === this.state.currentSpaceId) || this.state.spaces[0];
+  get theme() {
+    return THEMES[this.settings.theme] || THEMES.ocean;
   },
 
+  // ---- tabs
+
   /** Pinned tabs first, then the most recently used. */
-  tabsIn(spaceId = this.state.currentSpaceId) {
-    const tabs = this.state.tabs.filter((t) => t.spaceId === spaceId);
-    return [
-      ...tabs.filter((t) => t.pinned),
-      ...tabs.filter((t) => !t.pinned).sort((a, b) => b.lastActive - a.lastActive),
-    ];
+  get tabs() {
+    const { tabs } = this.state;
+    return [...tabs.filter((t) => t.pinned), ...tabs.filter((t) => !t.pinned).sort((a, b) => b.lastActive - a.lastActive)];
   },
 
   get currentTab() {
-    const id = this.state.currentTabBySpace[this.state.currentSpaceId];
-    return this.state.tabs.find((t) => t.id === id && t.spaceId === this.state.currentSpaceId) || null;
+    return this.findTab(this.state.currentTabId);
   },
 
   findTab(id) {
     return this.state.tabs.find((t) => t.id === id) || null;
   },
 
-  // ---- tabs
-
-  /** Adds a tab (or reuses one with the same URL in this space) and marks it as current. */
+  /** Adds a tab (or reuses one with the same URL) and marks it as current. */
   touchTab(url, title) {
-    const spaceId = this.state.currentSpaceId;
-    let tab = this.state.tabs.find((t) => t.spaceId === spaceId && t.url === url);
+    let tab = this.state.tabs.find((t) => t.url === url);
     if (!tab) {
-      tab = { id: uid(), spaceId, url, title: title || titleFromURL(url), pinned: false, createdAt: Date.now(), lastActive: Date.now() };
+      tab = { id: uid(), url, title: title || titleFromURL(url), pinned: false, createdAt: Date.now(), lastActive: Date.now() };
       this.state.tabs.push(tab);
     }
     tab.lastActive = Date.now();
-    this.state.currentTabBySpace[spaceId] = tab.id;
+    this.state.currentTabId = tab.id;
     this.commit();
     return tab;
   },
 
   useTab(tab) {
     tab.lastActive = Date.now();
-    this.state.currentTabBySpace[tab.spaceId] = tab.id;
+    this.state.currentTabId = tab.id;
     this.commit();
   },
 
   closeTab(tab) {
     this.archive(tab);
     this.state.tabs = this.state.tabs.filter((t) => t.id !== tab.id);
-    if (this.state.currentTabBySpace[tab.spaceId] === tab.id) delete this.state.currentTabBySpace[tab.spaceId];
+    if (this.state.currentTabId === tab.id) this.state.currentTabId = null;
     this.commit();
   },
 
@@ -161,21 +175,14 @@ export const store = {
     this.commit();
   },
 
-  moveTab(tab, spaceId) {
-    if (this.state.currentTabBySpace[tab.spaceId] === tab.id) delete this.state.currentTabBySpace[tab.spaceId];
-    tab.spaceId = spaceId;
-    this.commit();
-  },
-
   closeAllUnpinned() {
-    const spaceId = this.state.currentSpaceId;
-    this.state.tabs.filter((t) => t.spaceId === spaceId && !t.pinned).forEach((t) => this.archive(t));
-    this.state.tabs = this.state.tabs.filter((t) => t.spaceId !== spaceId || t.pinned);
-    if (!this.currentTab) delete this.state.currentTabBySpace[spaceId];
+    this.state.tabs.filter((t) => !t.pinned).forEach((t) => this.archive(t));
+    this.state.tabs = this.state.tabs.filter((t) => t.pinned);
+    if (!this.currentTab) this.state.currentTabId = null;
     this.commit();
   },
 
-  // ---- bookmarks (shared by all spaces, like a desktop bookmarks bar)
+  // ---- bookmarks (like a desktop bookmarks bar)
 
   isBookmarked(url) {
     return this.state.bookmarks.some((b) => b.url === url);
@@ -183,7 +190,7 @@ export const store = {
 
   addBookmark(url, title) {
     if (this.isBookmarked(url)) return;
-    this.state.bookmarks.push({ id: uid(), url, title: (title || titleFromURL(url)).replace(/^🔎 /, '') });
+    this.state.bookmarks.push({ id: uid(), url, title: title || titleFromURL(url) });
     this.commit();
   },
 
@@ -207,42 +214,6 @@ export const store = {
     this.commit();
   },
 
-  // ---- spaces
-
-  switchSpace(id) {
-    if (!this.state.spaces.some((s) => s.id === id)) return;
-    this.state.currentSpaceId = id;
-    this.commit();
-  },
-
-  switchSpaceBy(offset) {
-    const index = this.state.spaces.findIndex((s) => s.id === this.state.currentSpaceId);
-    const next = this.state.spaces[index + offset];
-    if (next) this.switchSpace(next.id);
-  },
-
-  addSpace(name, emoji, theme) {
-    const space = { id: uid(), name: name.trim() || '新しいスペース', emoji, theme };
-    this.state.spaces.push(space);
-    this.state.currentSpaceId = space.id;
-    this.commit();
-  },
-
-  updateSpace(space, patch) {
-    Object.assign(space, patch);
-    this.commit();
-  },
-
-  deleteSpace(space) {
-    if (this.state.spaces.length < 2) return;
-    this.state.tabs.filter((t) => t.spaceId === space.id).forEach((t) => this.archive(t));
-    this.state.tabs = this.state.tabs.filter((t) => t.spaceId !== space.id);
-    this.state.spaces = this.state.spaces.filter((s) => s.id !== space.id);
-    delete this.state.currentTabBySpace[space.id];
-    if (this.state.currentSpaceId === space.id) this.state.currentSpaceId = this.state.spaces[0].id;
-    this.commit();
-  },
-
   // ---- archive (Arc-style auto archiving)
 
   archiveStaleTabs() {
@@ -254,14 +225,12 @@ export const store = {
     stale.forEach((t) => this.archive(t));
     const ids = new Set(stale.map((t) => t.id));
     this.state.tabs = this.state.tabs.filter((t) => !ids.has(t.id));
-    for (const [spaceId, tabId] of Object.entries(this.state.currentTabBySpace)) {
-      if (ids.has(tabId)) delete this.state.currentTabBySpace[spaceId];
-    }
+    if (ids.has(this.state.currentTabId)) this.state.currentTabId = null;
     this.commit();
   },
 
   archive(tab) {
-    this.state.archived.unshift({ id: uid(), url: tab.url, title: tab.title, spaceId: tab.spaceId, archivedAt: Date.now() });
+    this.state.archived.unshift({ id: uid(), url: tab.url, title: tab.title, archivedAt: Date.now() });
     this.state.archived.length = Math.min(this.state.archived.length, ARCHIVE_LIMIT);
   },
 
@@ -278,13 +247,13 @@ export const store = {
   // ---- backup
 
   exportData() {
-    return JSON.stringify({ kumo: 1, state: this.state }, null, 2);
+    return JSON.stringify({ kumo: 2, state: this.state }, null, 2);
   },
 
   importData(text) {
     const data = JSON.parse(text);
-    if (!data || data.kumo !== 1 || !data.state?.spaces?.length) throw new Error('Kumoのバックアップではありません');
-    this.state = { ...defaultState(), ...data.state };
+    if (!data || !data.kumo || !data.state || !Array.isArray(data.state.tabs)) throw new Error('Kumoのバックアップではありません');
+    this.state = { ...defaultState(), ...defined(migrateSpaces(data.state, {})) };
     this.commit();
   },
 };

@@ -510,6 +510,70 @@ async function pasteIntoAsk() {
   }
 }
 
+// ---------------------------------------------------------------- the orb (just for fun)
+
+/**
+ * Press to squish, drag to pull it around on a rubber band, let go to watch it wobble back.
+ * The highlight follows your finger. Five quick taps switch to the next theme color.
+ */
+function enableOrbPlay() {
+  const home = $('#home');
+  const rubber = (d) => (d * 0.5) / (1 + Math.abs(d) / 160);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  let drag = null;
+  let taps = [];
+
+  const light = (orb, rect, e) => {
+    orb.style.setProperty('--hx', `${clamp(((e.clientX - rect.left) / rect.width) * 100, 18, 82)}%`);
+    orb.style.setProperty('--hy', `${clamp(((e.clientY - rect.top) / rect.height) * 100, 18, 82)}%`);
+  };
+
+  home.addEventListener('pointerdown', (e) => {
+    const orb = e.target.closest('.orb');
+    if (!orb) return;
+    orb.setPointerCapture(e.pointerId);
+    drag = { orb, id: e.pointerId, x: e.clientX, y: e.clientY, rect: orb.getBoundingClientRect() };
+    orb.classList.remove('jelly');
+    orb.classList.add('pressed');
+    light(orb, drag.rect, e);
+    const ring = document.createElement('span');
+    ring.className = 'orb-ripple';
+    ring.addEventListener('animationend', () => ring.remove());
+    orb.append(ring);
+  });
+
+  home.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.orb.style.translate = `${rubber(e.clientX - drag.x)}px ${rubber(e.clientY - drag.y)}px`;
+    light(drag.orb, drag.rect, e);
+  });
+
+  const release = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { orb } = drag;
+    drag = null;
+    orb.classList.remove('pressed');
+    orb.style.translate = '';
+    orb.style.removeProperty('--hx');
+    orb.style.removeProperty('--hy');
+    void orb.offsetWidth; // restart the wobble even on rapid taps
+    orb.classList.add('jelly');
+    orb.addEventListener('animationend', (ev) => ev.animationName === 'jelly' && orb.classList.remove('jelly'), { once: true });
+
+    const now = Date.now();
+    taps = [...taps.filter((t) => now - t < 1600), now];
+    if (taps.length >= 5) {
+      taps = [];
+      const keys = Object.keys(THEMES);
+      const next = keys[(keys.indexOf(store.settings.theme) + 1) % keys.length];
+      store.saveSettings({ theme: next });
+      toast(`✨ ${THEMES[next].name}`);
+    }
+  };
+  home.addEventListener('pointerup', release);
+  home.addEventListener('pointercancel', release);
+}
+
 // ---------------------------------------------------------------- sidebar (Arc / Dia style)
 
 function renderSidebar() {
@@ -1126,7 +1190,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Orb v0.8 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Orb v0.9 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>
@@ -1183,6 +1247,7 @@ renderShell();
 render();
 trackViewport();
 enableLongPress();
+enableOrbPlay();
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {

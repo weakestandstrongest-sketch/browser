@@ -209,11 +209,8 @@ function renderShell() {
     </header>
     <main id="home"></main>
     <nav class="dock">
-      <div class="dock-inner">
-        <button class="dock-btn" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
-        <button class="dock-search" data-action="new-tab">${ICON.plus}<span>新しいタブ</span></button>
-        <button class="dock-btn dock-ai" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
-      </div>
+      <button class="fab" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
+      <button class="fab fab-ai" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
     </nav>
     <div class="sb-scrim" data-action="close-sidebar"></div>
     <aside class="sidebar" id="sidebar" aria-label="サイドバー"></aside>`;
@@ -399,14 +396,15 @@ function renderHome() {
   const focused = document.activeElement?.matches?.('.ask-input');
 
   $('#home').innerHTML = `
-    ${installBanner()}
-    <section class="hero">
-      <div class="orb"></div>
-      <h1 class="greet">${greeting()}</h1>
-      <p class="hero-sub">${tabs.length ? `${tabs.length}個のタブ` : 'Kumo'}</p>
-    </section>
-
-    ${askCardHTML()}
+    <div class="stage">
+      ${installBanner()}
+      <section class="hero">
+        <div class="orb"></div>
+        <h1 class="greet">${greeting()}</h1>
+        <p class="hero-sub">${tabs.length ? `${tabs.length}個のタブ` : 'Kumo'}</p>
+      </section>
+      ${askCardHTML()}
+    </div>
 
     ${
       current
@@ -437,8 +435,7 @@ function renderHome() {
             .join('')}</section>`
         : ''
     }
-
-    <p class="hint">開いたタブはサイドバーに · 左端からスワイプ</p>`;
+`;
 
   const input = $('.ask-input');
   autosize(input);

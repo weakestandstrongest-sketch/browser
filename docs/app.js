@@ -27,13 +27,16 @@ const ICON = {
   share: svg('<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>'),
 };
 
+// Spread hashed hues with the golden angle so neighbouring letters get distinct colors.
+const hueOf = (text) => Math.round(([...text].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 1000) * 137.508) % 360;
 const favicon = (url, size = 20) => {
   const host = hostOf(url);
-  const fallback = `<span class="fav-fallback" style="width:${size}px;height:${size}px">${esc((host[0] || '?').toUpperCase())}</span>`;
+  const letter = esc((host.replace(/^(m|mobile|mail|news)\./, '')[0] || '•').toUpperCase());
+  const fallback = `<span class="fav-fallback" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.52)}px;--h:${hueOf(host)}">${letter}</span>`;
   if (!host) return fallback;
-  return `<img class="fav" width="${size}" height="${size}" loading="lazy" alt="" src="https://icons.duckduckgo.com/ip3/${encodeURIComponent(
+  return `<img class="fav" width="${size}" height="${size}" loading="lazy" alt="" src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(
     host
-  )}.ico" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${esc(fallback)}">`;
+  )}&sz=64" onerror="this.outerHTML=this.dataset.fallback" data-fallback="${esc(fallback)}">`;
 };
 
 const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'auto' });
@@ -170,10 +173,12 @@ function actionSheet(title, actions) {
 // ---------------------------------------------------------------- main screen
 
 /** Draft of the home "Ask anything" box: text plus tabs attached as context (Dia's "Add tabs"). */
-const askDraft = { text: '', tabIds: [] };
+const askDraft = { text: '', tabIds: [], mode: null }; // mode: null = auto, 'search' | 'ai'
+let askSuggestions = [];
 
 function renderShell() {
   app.innerHTML = `
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
     <header class="topbar">
       <div class="topbar-row">
         <button class="space-pill glass" data-action="space-switcher" id="space-pill"></button>
@@ -183,10 +188,12 @@ function renderShell() {
       <div class="bookmarks" id="bookmarks"></div>
     </header>
     <main id="home"></main>
-    <nav class="bottombar">
-      <button class="round glass" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
-      <button class="search-pill glass" data-action="command">${ICON.search}<span>検索・URL・AIに質問</span></button>
-      <button class="round glass ai-btn" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
+    <nav class="dock">
+      <div class="dock-inner">
+        <button class="dock-btn" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
+        <button class="dock-search" data-action="command">${ICON.search}<span>検索・URL</span></button>
+        <button class="dock-btn dock-ai" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
+      </div>
     </nav>
     <div class="sb-scrim" data-action="close-sidebar"></div>
     <aside class="sidebar" id="sidebar" aria-label="サイドバー"></aside>`;
@@ -195,11 +202,14 @@ function renderShell() {
   app.addEventListener('input', (e) => {
     if (e.target.matches('.ask-input')) {
       askDraft.text = e.target.value;
+      if (!askDraft.text.trim()) askDraft.mode = null;
       autosize(e.target);
+      updateAskUI();
     }
   });
   app.addEventListener('keydown', (e) => {
-    if (e.target.matches('.ask-input') && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) {
+    // Enter runs the highlighted action (IME composition keeps working: isComposing / keyCode 229).
+    if (e.target.matches('.ask-input') && e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       submitAsk();
     }
@@ -223,7 +233,8 @@ function render() {
   const [g1, g2] = THEMES[space.theme] || THEMES.ocean;
   document.documentElement.style.setProperty('--g1', g1);
   document.documentElement.style.setProperty('--g2', g2);
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', g1);
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', bg || g1);
   renderTopbar();
   renderHome();
   renderSidebar();
@@ -250,10 +261,10 @@ function greeting() {
 
 function askCardHTML() {
   const attached = askDraft.tabIds.map((id) => store.findTab(id)).filter(Boolean);
-  return `<form class="ask-card glass">
+  const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
+  return `<form class="ask-card">
       <div class="ask-row">
-        ${ICON.sparkles}
-        <textarea class="ask-input" rows="1" enterkeyhint="send" placeholder="何でも聞いてください…">${esc(askDraft.text)}</textarea>
+        <textarea class="ask-input" rows="1" enterkeyhint="go" autocapitalize="off" placeholder="検索、またはAIに質問…">${esc(askDraft.text)}</textarea>
       </div>
       ${
         attached.length
@@ -263,11 +274,59 @@ function askCardHTML() {
               .join('')}</div>`
           : ''
       }
+      <div class="ask-suggest"></div>
       <div class="ask-foot">
-        <button type="button" class="ask-attach" data-action="attach">${ICON.plus}タブを追加</button>
-        <button type="submit" class="ask-send" aria-label="送信">${ICON.send}</button>
+        <button type="button" class="ask-tool" data-action="attach" aria-label="タブを追加">${ICON.plus}<span>タブ</span></button>
+        <div class="mode-toggle" role="radiogroup" aria-label="送信先">
+          <button type="button" role="radio" data-action="ask-mode" data-mode="search">${ICON.search}<span>${esc(engine)}</span></button>
+          <button type="button" role="radio" data-action="ask-mode" data-mode="ai">${ICON.sparkles}<span>AI</span></button>
+        </div>
+        <span class="spacer"></span>
+        <button type="submit" class="ask-send" aria-label="実行">${ICON.send}</button>
       </div>
     </form>`;
+}
+
+/** What Enter does right now: open a URL, search with the chosen engine, or ask the AI. */
+function resolveAskKind() {
+  const text = askDraft.text.trim();
+  if (askDraft.mode === 'search') return 'search';
+  if (askDraft.mode === 'ai' || askDraft.tabIds.length) return 'ask';
+  if (parseURL(text)) return 'open';
+  return text && looksLikeQuestion(text) ? 'ask' : 'search';
+}
+
+function updateAskUI() {
+  const card = $('.ask-card');
+  if (!card) return;
+  const text = askDraft.text.trim();
+  const kind = resolveAskKind();
+  card.classList.toggle('has-text', !!text);
+  card.querySelectorAll('[data-mode]').forEach((b) => {
+    const on = (b.dataset.mode === 'ai' && kind === 'ask') || (b.dataset.mode === 'search' && kind === 'search');
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', on);
+  });
+  $('.ask-send', card).innerHTML = kind === 'open' ? ICON.open : kind === 'search' ? ICON.search : ICON.send;
+
+  if (!text) {
+    askSuggestions = [];
+    $('.ask-suggest', card).innerHTML = '';
+    return;
+  }
+  const items = buildSuggestions(text);
+  const index = items.findIndex((s) => s.kind === kind);
+  if (index > 0) items.unshift(items.splice(index, 1)[0]);
+  askSuggestions = items.slice(0, 6);
+  $('.ask-suggest', card).innerHTML = askSuggestions
+    .map(
+      (s, i) => `<button type="button" class="sug-row ${i === 0 ? 'is-default' : ''} ${s.kind}" data-action="ask-suggest" data-i="${i}">
+        <span class="sug-icon">${s.icon}</span>
+        <span class="sug-text"><strong>${esc(s.title)}</strong><small>${esc(s.subtitle)}</small></span>
+        ${i === 0 ? '<kbd>↵</kbd>' : ''}
+      </button>`
+    )
+    .join('');
 }
 
 function renderHome() {
@@ -281,8 +340,9 @@ function renderHome() {
   $('#home').innerHTML = `
     ${installBanner()}
     <section class="hero">
-      <div class="hero-emoji">${esc(space.emoji)}</div>
-      <p>${greeting()}</p>
+      <div class="orb"></div>
+      <h1 class="greet">${greeting()}</h1>
+      <p class="hero-sub">${esc(space.name)} · ${tabs.length ? `${tabs.length}個のタブ` : 'タブなし'}</p>
     </section>
 
     ${askCardHTML()}
@@ -333,10 +393,11 @@ function renderHome() {
             </div>`
       }
     </section>
-    <p class="hint">左端からスワイプでサイドバー・左右スワイプでスペース切り替え</p>`;
+    <p class="hint">左端からスワイプでサイドバー　·　左右スワイプでスペース切替</p>`;
 
   const input = $('.ask-input');
   autosize(input);
+  updateAskUI();
   if (focused) input.focus();
 }
 
@@ -363,18 +424,25 @@ function installBanner() {
     </section>`;
 }
 
-/** Home box: a URL opens the site, anything else goes to the AI with the attached tabs. */
-function submitAsk() {
+/** Runs a home-box action: open a URL, search with the chosen engine, ask the AI, or jump to a tab. */
+function runAsk(suggestion) {
   const text = askDraft.text.trim();
-  if (!text) return;
-  const url = askDraft.tabIds.length ? null : parseURL(text);
   const tabIds = askDraft.tabIds.filter((id) => store.findTab(id));
+  const kind = suggestion?.kind || resolveAskKind();
+  if (!text && kind !== 'tab') return;
   askDraft.text = '';
   askDraft.tabIds = [];
+  askDraft.mode = null;
   $('.ask-input')?.blur();
-  if (url) openURL(url);
-  else openAssistant({ question: text, tabIds });
+  if (kind === 'open') openURL(suggestion?.url || parseURL(text));
+  else if (kind === 'search') openURL(searchURL(suggestion?.query || text));
+  else if (kind === 'tab') openTab(suggestion.tab);
+  else openAssistant({ question: suggestion?.query || text, tabIds });
   renderHome();
+}
+
+function submitAsk() {
+  runAsk(askSuggestions[0]);
 }
 
 // ---------------------------------------------------------------- sidebar (Arc / Dia style)
@@ -526,6 +594,14 @@ function onAppClick(e) {
       break;
     case 'attach':
       pickTabs();
+      break;
+    case 'ask-mode':
+      askDraft.mode = el.dataset.mode;
+      updateAskUI();
+      $('.ask-input')?.focus();
+      break;
+    case 'ask-suggest':
+      runAsk(askSuggestions[Number(el.dataset.i)]);
       break;
     case 'detach':
       askDraft.tabIds = askDraft.tabIds.filter((t) => t !== id);
@@ -777,7 +853,7 @@ function buildSuggestions(q) {
   if (url) items.push({ kind: 'open', url, icon: ICON.globe, title: url, subtitle: 'サイトを開く' });
   const engine = (ENGINES[store.settings.engine] || ENGINES.google).name;
   const search = { kind: 'search', query: q, icon: ICON.search, title: q, subtitle: `${engine}で検索` };
-  const ask = { kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Kumo AIに聞く（必要ならWeb検索します）' };
+  const ask = { kind: 'ask', query: q, icon: ICON.sparkles, title: q, subtitle: 'Kumo AIに聞く' };
   items.push(...(looksLikeQuestion(q) ? [ask, search] : [search, ask]));
   const lower = q.toLowerCase();
   store.tabsIn()
@@ -1158,7 +1234,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Kumo v0.3 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Kumo v0.4 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>

@@ -5,12 +5,12 @@ const SETTINGS_KEY = 'kumo.settings.v1';
 const ARCHIVE_LIMIT = 300;
 
 export const THEMES = {
-  ocean: ['#337af5', '#4dc7ed'],
-  grape: ['#784af0', '#c76bf2'],
-  sunset: ['#fa7345', '#fdb84d'],
-  forest: ['#1f946b', '#73cc7a'],
-  rose: ['#ed4d85', '#fa94a8'],
-  midnight: ['#212645', '#4d5480'],
+  ocean: ['#4f7cff', '#2ec5f0'],
+  grape: ['#8b5cf6', '#e879f9'],
+  sunset: ['#ff6b4a', '#ffb547'],
+  forest: ['#10b981', '#a3e635'],
+  rose: ['#f43f5e', '#fb923c'],
+  midnight: ['#6366f1', '#64748b'],
 };
 
 export const ENGINES = {
@@ -301,7 +301,7 @@ export function titleFromURL(url) {
   try {
     const u = new URL(url);
     for (const engine of Object.values(ENGINES)) {
-      if (url.startsWith(engine.url)) return '🔎 ' + (u.searchParams.get('q') || '');
+      if (url.startsWith(engine.url)) return u.searchParams.get('q') || engine.name;
     }
     const path = decodeURIComponent(u.pathname).replace(/\/$/, '');
     return hostOf(url) + (path && path.length < 40 ? path : path ? '/…' : '');

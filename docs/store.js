@@ -167,6 +167,21 @@ export const store = {
     this.commit();
   },
 
+  /**
+   * Points the current tab at a page reached inside the Safari view (which Orb can't observe).
+   * Pinned tabs keep their URL, so a new tab is made instead.
+   */
+  navigateCurrent(url) {
+    const tab = this.currentTab;
+    const existing = this.state.tabs.find((t) => t.url === url);
+    if (!tab || tab.pinned || existing) return this.touchTab(url);
+    tab.url = url;
+    tab.title = titleFromURL(url);
+    tab.lastActive = Date.now();
+    this.commit();
+    return tab;
+  },
+
   togglePin(tab) {
     tab.pinned = !tab.pinned;
     this.commit();

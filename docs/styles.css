@@ -766,6 +766,22 @@ kbd {
   height: 14px;
 }
 
+.current-paste {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+.current-paste svg {
+  width: 16px;
+  height: 16px;
+}
+
 .current-open {
   width: 32px;
   height: 32px;
@@ -1929,6 +1945,9 @@ body.sidebar-open .sb-scrim {
   z-index: 50;
   pointer-events: none;
   white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);

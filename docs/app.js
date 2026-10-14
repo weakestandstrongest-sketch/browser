@@ -435,6 +435,7 @@ function currentTabHTML(tab) {
         ${favicon(tab.url, 28)}
         <span class="current-text"><small>閲覧中のタブ</small><strong>${esc(tab.title)}</strong></span>
       </button>
+      <button class="current-paste" data-action="paste-current" aria-label="コピーしたリンクで更新">${ICON.clipboard}</button>
       <button class="current-ask" data-action="quick" data-prompt="要約">${ICON.sparkles}要約</button>
       <button class="current-open" data-action="open-tab" data-id="${tab.id}" aria-label="開く">${ICON.open}</button>
     </section>`;
@@ -470,6 +471,21 @@ function runAsk(suggestion) {
 
 function submitAsk() {
   runAsk(askDraft.text.trim() ? askSuggestions[0] : null);
+}
+
+/**
+ * Orb can't see where you go inside the Safari view, so after moving from Google to another site,
+ * copy its link there (share → コピー) and tap the clipboard button to make it the current tab.
+ */
+async function updateCurrentFromClipboard() {
+  try {
+    const url = parseURL((await navigator.clipboard.readText()).trim());
+    if (!url) return toast('コピーしたリンクが見つかりません');
+    const tab = store.navigateCurrent(url);
+    toast(`閲覧中のタブを ${hostOf(tab.url)} に更新しました`);
+  } catch {
+    toast('クリップボードを読めませんでした');
+  }
 }
 
 /** A copied link becomes a tab attached to the box, so the next question is about that page. */
@@ -639,6 +655,9 @@ function onAppClick(e) {
     case 'detach':
       askDraft.tabIds = askDraft.tabIds.filter((t) => t !== id);
       renderHome();
+      break;
+    case 'paste-current':
+      updateCurrentFromClipboard();
       break;
     case 'ask-mode':
       askDraft.mode = el.dataset.mode;
@@ -1107,7 +1126,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Orb v0.7 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Orb v0.8 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>

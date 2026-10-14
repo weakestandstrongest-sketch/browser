@@ -27,13 +27,30 @@ const DEFAULT_SETTINGS = {
   webTools: true,
   engine: 'google',
   archiveHours: 12,
+  showBookmarks: true,
 };
+
+const DEFAULT_BOOKMARKS = [
+  ['https://www.google.com/', 'Google'],
+  ['https://www.youtube.com/', 'YouTube'],
+  ['https://claude.ai/', 'Claude'],
+  ['https://chatgpt.com/', 'ChatGPT'],
+  ['https://gemini.google.com/', 'Gemini'],
+  ['https://github.com/', 'GitHub'],
+];
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 
 function defaultState() {
   const home = { id: uid(), name: 'ホーム', emoji: '🏠', theme: 'ocean' };
-  return { spaces: [home], currentSpaceId: home.id, tabs: [], archived: [], currentTabBySpace: {} };
+  return {
+    spaces: [home],
+    currentSpaceId: home.id,
+    tabs: [],
+    archived: [],
+    currentTabBySpace: {},
+    bookmarks: DEFAULT_BOOKMARKS.map(([url, title]) => ({ id: uid(), url, title })),
+  };
 }
 
 function read(key) {
@@ -155,6 +172,38 @@ export const store = {
     this.state.tabs.filter((t) => t.spaceId === spaceId && !t.pinned).forEach((t) => this.archive(t));
     this.state.tabs = this.state.tabs.filter((t) => t.spaceId !== spaceId || t.pinned);
     if (!this.currentTab) delete this.state.currentTabBySpace[spaceId];
+    this.commit();
+  },
+
+  // ---- bookmarks (shared by all spaces, like a desktop bookmarks bar)
+
+  isBookmarked(url) {
+    return this.state.bookmarks.some((b) => b.url === url);
+  },
+
+  addBookmark(url, title) {
+    if (this.isBookmarked(url)) return;
+    this.state.bookmarks.push({ id: uid(), url, title: (title || titleFromURL(url)).replace(/^🔎 /, '') });
+    this.commit();
+  },
+
+  removeBookmark(id) {
+    this.state.bookmarks = this.state.bookmarks.filter((b) => b.id !== id);
+    this.commit();
+  },
+
+  renameBookmark(id, title) {
+    const bookmark = this.state.bookmarks.find((b) => b.id === id);
+    if (bookmark) bookmark.title = title.trim() || bookmark.title;
+    this.commit();
+  },
+
+  moveBookmark(id, offset) {
+    const list = this.state.bookmarks;
+    const from = list.findIndex((b) => b.id === id);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= list.length) return;
+    list.splice(to, 0, list.splice(from, 1)[0]);
     this.commit();
   },
 

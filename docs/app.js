@@ -21,6 +21,9 @@ const ICON = {
   compose: svg('<path d="M12 20h8.5M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
   globe: svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>'),
   open: svg('<path d="M7 17 17 7M9 7h8v8"/>'),
+  sidebar: svg('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>'),
+  chevron: svg('<path d="m7 10 5 5 5-5"/>'),
+  check: svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
   share: svg('<path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/>'),
 };
 
@@ -166,21 +169,53 @@ function actionSheet(title, actions) {
 
 // ---------------------------------------------------------------- main screen
 
+/** Draft of the home "Ask anything" box: text plus tabs attached as context (Dia's "Add tabs"). */
+const askDraft = { text: '', tabIds: [] };
+
 function renderShell() {
   app.innerHTML = `
     <header class="topbar">
-      <div class="spaces" id="spaces"></div>
-      <button class="icon-btn glass" data-action="settings" aria-label="設定">${ICON.settings}</button>
+      <div class="topbar-row">
+        <button class="space-pill glass" data-action="space-switcher" id="space-pill"></button>
+        <span class="spacer"></span>
+        <button class="icon-btn glass" data-action="settings" aria-label="設定">${ICON.settings}</button>
+      </div>
+      <div class="bookmarks" id="bookmarks"></div>
     </header>
     <main id="home"></main>
     <nav class="bottombar">
-      <button class="round glass" data-action="archive" aria-label="アーカイブ">${ICON.archive}</button>
+      <button class="round glass" data-action="sidebar" aria-label="サイドバー">${ICON.sidebar}</button>
       <button class="search-pill glass" data-action="command">${ICON.search}<span>検索・URL・AIに質問</span></button>
       <button class="round glass ai-btn" data-action="assistant" aria-label="AIアシスタント">${ICON.sparkles}</button>
-    </nav>`;
+    </nav>
+    <div class="sb-scrim" data-action="close-sidebar"></div>
+    <aside class="sidebar" id="sidebar" aria-label="サイドバー"></aside>`;
 
   app.addEventListener('click', onAppClick);
+  app.addEventListener('input', (e) => {
+    if (e.target.matches('.ask-input')) {
+      askDraft.text = e.target.value;
+      autosize(e.target);
+    }
+  });
+  app.addEventListener('keydown', (e) => {
+    if (e.target.matches('.ask-input') && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) {
+      e.preventDefault();
+      submitAsk();
+    }
+  });
+  app.addEventListener('submit', (e) => {
+    if (!e.target.matches('.ask-card')) return;
+    e.preventDefault();
+    submitAsk();
+  });
   enableSpaceSwipe($('#home'));
+  enableSidebarGestures();
+}
+
+function autosize(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
 }
 
 function render() {
@@ -189,25 +224,50 @@ function render() {
   document.documentElement.style.setProperty('--g1', g1);
   document.documentElement.style.setProperty('--g2', g2);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', g1);
-  renderSpaces();
+  renderTopbar();
   renderHome();
+  renderSidebar();
 }
 
-function renderSpaces() {
-  const { spaces, currentSpaceId } = store.state;
-  $('#spaces').innerHTML =
-    spaces
+function renderTopbar() {
+  const space = store.currentSpace;
+  $('#space-pill').innerHTML = `<span>${esc(space.emoji)}</span><strong>${esc(space.name)}</strong>${ICON.chevron}`;
+  const bar = $('#bookmarks');
+  bar.hidden = !store.settings.showBookmarks;
+  bar.innerHTML =
+    store.state.bookmarks
       .map(
-        (s) => `<button class="space-chip ${s.id === currentSpaceId ? 'active' : ''}" data-action="space" data-id="${s.id}"
-          style="--c1:${THEMES[s.theme]?.[0]};--c2:${THEMES[s.theme]?.[1]}">${esc(s.emoji)} ${esc(s.name)}</button>`
+        (b) => `<button class="bookmark" data-action="bookmark" data-id="${b.id}" data-menu="bookmark">
+          ${favicon(b.url, 16)}<span>${esc(b.title)}</span></button>`
       )
-      .join('') + `<button class="space-chip add" data-action="new-space" aria-label="スペースを追加">${ICON.plus}</button>`;
-  $('.space-chip.active')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+      .join('') + `<button class="bookmark add" data-action="add-bookmark" aria-label="ブックマークを追加">${ICON.plus}</button>`;
 }
 
 function greeting() {
   const h = new Date().getHours();
   return h >= 5 && h < 11 ? 'おはようございます' : h < 18 && h >= 11 ? 'こんにちは' : 'こんばんは';
+}
+
+function askCardHTML() {
+  const attached = askDraft.tabIds.map((id) => store.findTab(id)).filter(Boolean);
+  return `<form class="ask-card glass">
+      <div class="ask-row">
+        ${ICON.sparkles}
+        <textarea class="ask-input" rows="1" enterkeyhint="send" placeholder="何でも聞いてください…">${esc(askDraft.text)}</textarea>
+      </div>
+      ${
+        attached.length
+          ? `<div class="ask-chips">${attached
+              .map((t) => `<span class="ask-chip">${favicon(t.url, 14)}<span>${esc(t.title)}</span>
+                <button type="button" data-action="detach" data-id="${t.id}" aria-label="外す">${ICON.x}</button></span>`)
+              .join('')}</div>`
+          : ''
+      }
+      <div class="ask-foot">
+        <button type="button" class="ask-attach" data-action="attach">${ICON.plus}タブを追加</button>
+        <button type="submit" class="ask-send" aria-label="送信">${ICON.send}</button>
+      </div>
+    </form>`;
 }
 
 function renderHome() {
@@ -216,14 +276,16 @@ function renderHome() {
   const pinned = tabs.filter((t) => t.pinned);
   const today = tabs.filter((t) => !t.pinned);
   const current = store.currentTab;
+  const focused = document.activeElement?.matches?.('.ask-input');
 
   $('#home').innerHTML = `
     ${installBanner()}
     <section class="hero">
       <div class="hero-emoji">${esc(space.emoji)}</div>
-      <h1>${esc(space.name)}</h1>
       <p>${greeting()}</p>
     </section>
+
+    ${askCardHTML()}
 
     ${
       current
@@ -265,13 +327,17 @@ function renderHome() {
           ? `<div class="tab-list glass">${today.map(tabRow).join('')}</div>`
           : `<div class="empty glass">
               <p><strong>タブはまだありません</strong></p>
-              <p>下の検索バーからサイトを開くと、ここにタブとして並びます。ピン留めしていないタブは${
+              <p>下の検索バーやブックマークからサイトを開くと、ここにタブとして並びます。ピン留めしていないタブは${
                 Number(store.settings.archiveHours) ? `${store.settings.archiveHours}時間` : '…'
               }使わないと自動でアーカイブされます。</p>
             </div>`
       }
     </section>
-    <p class="hint">左右にスワイプしてスペースを切り替え</p>`;
+    <p class="hint">左端からスワイプでサイドバー・左右スワイプでスペース切り替え</p>`;
+
+  const input = $('.ask-input');
+  autosize(input);
+  if (focused) input.focus();
 }
 
 function tabRow(t) {
@@ -297,12 +363,109 @@ function installBanner() {
     </section>`;
 }
 
+/** Home box: a URL opens the site, anything else goes to the AI with the attached tabs. */
+function submitAsk() {
+  const text = askDraft.text.trim();
+  if (!text) return;
+  const url = askDraft.tabIds.length ? null : parseURL(text);
+  const tabIds = askDraft.tabIds.filter((id) => store.findTab(id));
+  askDraft.text = '';
+  askDraft.tabIds = [];
+  $('.ask-input')?.blur();
+  if (url) openURL(url);
+  else openAssistant({ question: text, tabIds });
+  renderHome();
+}
+
+// ---------------------------------------------------------------- sidebar (Arc / Dia style)
+
+function renderSidebar() {
+  const space = store.currentSpace;
+  const tabs = store.tabsIn();
+  const pinned = tabs.filter((t) => t.pinned);
+  const today = tabs.filter((t) => !t.pinned);
+  const currentId = store.currentTab?.id;
+
+  $('#sidebar').innerHTML = `
+    <div class="sb-head">
+      <button class="sb-space" data-action="space-switcher">
+        <span class="sb-space-emoji">${esc(space.emoji)}</span><strong>${esc(space.name)}</strong>${ICON.chevron}
+      </button>
+      <button class="sb-icon" data-action="close-sidebar" aria-label="サイドバーを閉じる">${ICON.sidebar}</button>
+    </div>
+
+    ${
+      pinned.length
+        ? `<div class="sb-pins">${pinned
+            .map((t) => `<button class="sb-pin ${t.id === currentId ? 'active' : ''}" data-action="open-tab" data-id="${t.id}" data-menu="tab" title="${esc(t.title)}">${favicon(t.url, 22)}</button>`)
+            .join('')}</div>`
+        : ''
+    }
+
+    <div class="sb-tabs">
+      ${today
+        .map(
+          (t) => `<div class="sb-tab ${t.id === currentId ? 'active' : ''}">
+            <button class="sb-tab-main" data-action="open-tab" data-id="${t.id}" data-menu="tab">${favicon(t.url, 18)}<span>${esc(t.title)}</span></button>
+            <button class="sb-tab-close" data-action="close-tab" data-id="${t.id}" aria-label="閉じる">${ICON.x}</button>
+          </div>`
+        )
+        .join('')}
+      <button class="sb-new" data-action="command">${ICON.plus}<span>新しいタブ</span></button>
+      ${pinned.length || today.length ? '' : '<p class="sb-empty">タブを長押しすると、ピン留めや移動ができます。</p>'}
+    </div>
+
+    <div class="sb-foot">
+      <button class="sb-icon" data-action="archive" aria-label="アーカイブ">${ICON.archive}</button>
+      <div class="sb-spaces">
+        ${store.state.spaces
+          .map(
+            (s) => `<button class="sb-dot ${s.id === space.id ? 'active' : ''}" data-action="space" data-id="${s.id}" aria-label="${esc(s.name)}"
+              style="--c1:${THEMES[s.theme]?.[0]}">${esc(s.emoji)}</button>`
+          )
+          .join('')}
+        <button class="sb-dot add" data-action="new-space" aria-label="スペースを追加">${ICON.plus}</button>
+      </div>
+      <button class="sb-icon" data-action="settings" aria-label="設定">${ICON.settings}</button>
+    </div>`;
+}
+
+function setSidebar(open) {
+  document.body.classList.toggle('sidebar-open', open);
+}
+
+/** Swipe in from the left edge to open, swipe left on the sidebar to close. */
+function enableSidebarGestures() {
+  let start = null;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    const open = document.body.classList.contains('sidebar-open');
+    if (layers.length) return;
+    if ((!open && t.clientX < 28) || (open && e.target.closest('.sidebar, .sb-scrim'))) {
+      start = { x: t.clientX, y: t.clientY, open };
+    }
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (!start.open && dx > 0) setSidebar(true);
+      if (start.open && dx < 0) setSidebar(false);
+    }
+    start = null;
+  }, { passive: true });
+}
+
 function onAppClick(e) {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const id = el.dataset.id;
+  const inSidebar = !!el.closest('.sidebar');
   switch (el.dataset.action) {
     case 'command':
+      if (inSidebar) setSidebar(false);
       openCommandBar();
       break;
     case 'assistant':
@@ -314,6 +477,15 @@ function onAppClick(e) {
     case 'archive':
       openArchive();
       break;
+    case 'sidebar':
+      setSidebar(true);
+      break;
+    case 'close-sidebar':
+      setSidebar(false);
+      break;
+    case 'space-switcher':
+      spaceSwitcher();
+      break;
     case 'space':
       if (id === store.state.currentSpaceId) spaceMenu(store.currentSpace);
       else store.switchSpace(id);
@@ -323,7 +495,9 @@ function onAppClick(e) {
       break;
     case 'open-tab': {
       const tab = store.findTab(id);
-      if (tab) openTab(tab);
+      if (!tab) break;
+      if (inSidebar) setSidebar(false);
+      openTab(tab);
       break;
     }
     case 'tab-menu': {
@@ -342,6 +516,21 @@ function onAppClick(e) {
     case 'quick':
       openAssistant({ skill: el.dataset.prompt, scope: 'tab' });
       break;
+    case 'bookmark': {
+      const bookmark = store.state.bookmarks.find((b) => b.id === id);
+      if (bookmark) openURL(bookmark.url, bookmark.title);
+      break;
+    }
+    case 'add-bookmark':
+      addBookmarkMenu();
+      break;
+    case 'attach':
+      pickTabs();
+      break;
+    case 'detach':
+      askDraft.tabIds = askDraft.tabIds.filter((t) => t !== id);
+      renderHome();
+      break;
     case 'dismiss-install':
       localStorage.setItem('kumo.installHintDismissed', '1');
       renderHome();
@@ -349,39 +538,45 @@ function onAppClick(e) {
   }
 }
 
-/** Long-press on a pinned tile opens its menu instead of the site. */
+/** Long-press on a pinned tile, sidebar tab or bookmark opens its menu instead of the site. */
 function enableLongPress() {
   let timer = null;
   let fired = false;
   app.addEventListener('touchstart', (e) => {
-    const el = e.target.closest('[data-menu=tab]');
+    const el = e.target.closest('[data-menu]');
     if (!el) return;
     fired = false;
     timer = setTimeout(() => {
       fired = true;
-      const tab = store.findTab(el.dataset.id);
-      if (tab) tabMenu(tab);
+      if (el.dataset.menu === 'bookmark') {
+        bookmarkMenu(el.dataset.id);
+      } else {
+        const tab = store.findTab(el.dataset.id);
+        if (tab) tabMenu(tab);
+      }
     }, 500);
   }, { passive: true });
   const cancel = () => clearTimeout(timer);
   app.addEventListener('touchend', cancel);
   app.addEventListener('touchmove', cancel, { passive: true });
   app.addEventListener('click', (e) => {
-    if (fired && e.target.closest('[data-menu=tab]')) {
+    if (fired && e.target.closest('[data-menu]')) {
       e.stopImmediatePropagation();
       e.preventDefault();
       fired = false;
     }
   }, true);
   app.addEventListener('contextmenu', (e) => {
-    if (e.target.closest('[data-menu=tab]')) e.preventDefault();
+    if (e.target.closest('[data-menu]')) e.preventDefault();
   });
 }
 
 function enableSpaceSwipe(el) {
   let start = null;
   el.addEventListener('touchstart', (e) => {
-    start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    const t = e.touches[0];
+    // Touches near the left edge belong to the sidebar gesture.
+    start = t.clientX < 28 ? null : { x: t.clientX, y: t.clientY };
   }, { passive: true });
   el.addEventListener('touchend', (e) => {
     if (!start) return;
@@ -398,13 +593,59 @@ function enableSpaceSwipe(el) {
 
 function tabMenu(tab) {
   const others = store.state.spaces.filter((s) => s.id !== tab.spaceId);
+  const bookmarked = store.isBookmarked(tab.url);
   actionSheet(tab.title, [
     { label: 'AIにこのページについて聞く', run: () => { store.useTab(tab); openAssistant({ scope: 'tab' }); } },
     { label: tab.pinned ? 'ピン留めを外す' : 'ピン留めする', run: () => store.togglePin(tab) },
+    {
+      label: bookmarked ? 'ブックマークから外す' : 'ブックマークバーに追加',
+      run: () => {
+        if (bookmarked) store.removeBookmark(store.state.bookmarks.find((b) => b.url === tab.url).id);
+        else store.addBookmark(tab.url, tab.title);
+      },
+    },
     { label: '名前を変更', run: () => { const t = prompt('タブの名前', tab.title); if (t !== null) store.renameTab(tab, t); } },
     ...(others.length ? [{ label: '別のスペースへ移動', run: () => actionSheet('移動先', others.map((s) => ({ label: `${s.emoji} ${s.name}`, run: () => store.moveTab(tab, s.id) }))) }] : []),
     { label: 'リンクをコピー', run: () => navigator.clipboard?.writeText(tab.url).then(() => toast('コピーしました')) },
     { label: '閉じる（アーカイブへ）', destructive: true, run: () => store.closeTab(tab) },
+  ]);
+}
+
+function bookmarkMenu(id) {
+  const bookmark = store.state.bookmarks.find((b) => b.id === id);
+  if (!bookmark) return;
+  const index = store.state.bookmarks.indexOf(bookmark);
+  actionSheet(bookmark.title, [
+    { label: '名前を変更', run: () => { const t = prompt('ブックマークの名前', bookmark.title); if (t !== null) store.renameBookmark(id, t); } },
+    ...(index > 0 ? [{ label: '左へ移動', run: () => store.moveBookmark(id, -1) }] : []),
+    ...(index < store.state.bookmarks.length - 1 ? [{ label: '右へ移動', run: () => store.moveBookmark(id, 1) }] : []),
+    { label: 'リンクをコピー', run: () => navigator.clipboard?.writeText(bookmark.url).then(() => toast('コピーしました')) },
+    { label: '削除', destructive: true, run: () => store.removeBookmark(id) },
+  ]);
+}
+
+function addBookmarkMenu() {
+  const current = store.currentTab;
+  const fromURL = () => {
+    const raw = prompt('ブックマークするURL', 'https://');
+    const url = raw && parseURL(raw);
+    if (!url) return raw && toast('URLが正しくありません');
+    const title = prompt('名前', titleFromURL(url).replace(/^🔎 /, ''));
+    store.addBookmark(url, title || undefined);
+  };
+  if (!current || store.isBookmarked(current.url)) return fromURL();
+  actionSheet('ブックマークを追加', [
+    { label: `閲覧中のタブ「${current.title}」`, run: () => store.addBookmark(current.url, current.title) },
+    { label: 'URLを入力して追加', run: fromURL },
+  ]);
+}
+
+function spaceSwitcher() {
+  const { spaces, currentSpaceId } = store.state;
+  actionSheet('スペース', [
+    ...spaces.map((s) => ({ label: `${s.id === currentSpaceId ? '✓ ' : ''}${s.emoji} ${s.name}`, run: () => store.switchSpace(s.id) })),
+    { label: '＋ 新しいスペース', run: () => openSpaceEditor() },
+    { label: 'このスペースを編集', run: () => spaceMenu(store.currentSpace) },
   ]);
 }
 
@@ -415,6 +656,35 @@ function spaceMenu(space) {
       ? [{ label: 'スペースを削除', destructive: true, run: () => { if (confirm(`「${space.name}」を削除しますか？タブはアーカイブに移動します。`)) store.deleteSpace(space); } }]
       : []),
   ]);
+}
+
+/** Choose tabs to attach to the home ask box. */
+function pickTabs() {
+  const tabs = store.tabsIn();
+  if (!tabs.length) return toast('このスペースにはまだタブがありません');
+  const selected = new Set(askDraft.tabIds);
+  const el = pushLayer(
+    'sheet-layer',
+    `<div class="sheet list-sheet">
+      <div class="chat-head"><span></span><strong>タブを追加</strong><button class="text-btn strong" data-done>完了</button></div>
+      <div class="archive-list">${tabs
+        .map((t) => `<button class="cmd-row pick-row" data-id="${t.id}">${favicon(t.url, 20)}<span><strong>${esc(t.title)}</strong><small>${esc(hostOf(t.url))}</small></span><i class="check">${ICON.check}</i></button>`)
+        .join('')}</div>
+    </div>`
+  );
+  const sync = () => el.querySelectorAll('.pick-row').forEach((r) => r.classList.toggle('picked', selected.has(r.dataset.id)));
+  el.querySelectorAll('.pick-row').forEach((row) =>
+    row.addEventListener('click', () => {
+      selected.has(row.dataset.id) ? selected.delete(row.dataset.id) : selected.add(row.dataset.id);
+      sync();
+    })
+  );
+  $('[data-done]', el).addEventListener('click', () => {
+    askDraft.tabIds = tabs.filter((t) => selected.has(t.id)).map((t) => t.id);
+    popLayer();
+    renderHome();
+  });
+  sync();
 }
 
 // ---------------------------------------------------------------- command bar (smart address bar)
@@ -532,7 +802,8 @@ const chat = {
   conversation: null,
   items: [], // { role, text, status, sources: Map, error }
   controller: null,
-  scope: null, // 'tab' | 'space' | 'none'
+  scope: null, // 'tab' | 'space' | 'picked' | 'none'
+  pickedIds: [], // tabs attached from the home ask box
   el: null,
 };
 
@@ -540,9 +811,18 @@ function defaultScope() {
   return store.currentTab ? 'tab' : 'none';
 }
 
-function openAssistant({ question, skill, scope } = {}) {
+function pickedTabs() {
+  return chat.pickedIds.map((id) => store.findTab(id)).filter(Boolean);
+}
+
+function openAssistant({ question, skill, scope, tabIds } = {}) {
+  if (tabIds?.length) {
+    chat.pickedIds = tabIds;
+    scope = 'picked';
+  }
   chat.scope = scope || chat.scope || defaultScope();
   if (chat.scope === 'tab' && !store.currentTab) chat.scope = 'none';
+  if (chat.scope === 'picked' && !pickedTabs().length) chat.scope = defaultScope();
   chat.el = pushLayer(
     'sheet-layer',
     `<div class="sheet chat">
@@ -552,11 +832,7 @@ function openAssistant({ question, skill, scope } = {}) {
         <strong>${ICON.sparkles} Kumo AI</strong>
         <button class="text-btn" data-close>閉じる</button>
       </div>
-      <div class="segmented" role="tablist">
-        <button data-scope="tab">閲覧中のタブ</button>
-        <button data-scope="space">全タブ</button>
-        <button data-scope="none">タブなし</button>
-      </div>
+      <div class="segmented" role="tablist"></div>
       <div class="chat-scroll"><div class="chat-items"></div></div>
       <div class="skills">${Object.keys(SKILLS).map((k) => `<button data-skill="${k}">${k}</button>`).join('')}</div>
       <form class="chat-input">
@@ -576,13 +852,13 @@ function openAssistant({ question, skill, scope } = {}) {
     chat.items = [];
     renderChat();
   });
-  el.querySelectorAll('[data-scope]').forEach((b) =>
-    b.addEventListener('click', () => {
-      if (b.dataset.scope === 'tab' && !store.currentTab) return toast('閲覧中のタブがありません');
-      chat.scope = b.dataset.scope;
-      renderChat();
-    })
-  );
+  $('.segmented', el).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-scope]');
+    if (!b) return;
+    if (b.dataset.scope === 'tab' && !store.currentTab) return toast('閲覧中のタブがありません');
+    chat.scope = b.dataset.scope;
+    renderChat();
+  });
   el.querySelectorAll('[data-skill]').forEach((b) =>
     b.addEventListener('click', () => {
       const name = b.dataset.skill;
@@ -623,6 +899,9 @@ function contextFor(scope) {
   if (scope === 'tab' && store.currentTab) {
     const t = store.currentTab;
     return `[閲覧中のタブ]\nタイトル: ${t.title}\nURL: ${t.url}`;
+  }
+  if (scope === 'picked' && pickedTabs().length) {
+    return `[ユーザーが添付したタブ]\n${pickedTabs().map((t, i) => `${i + 1}. ${t.title} — ${t.url}`).join('\n')}`;
   }
   if (scope === 'space') {
     const tabs = store.tabsIn();
@@ -706,12 +985,27 @@ function replyHTML(item) {
 function renderChat() {
   const el = chat.el;
   if (!el) return;
-  el.querySelectorAll('[data-scope]').forEach((b) => b.classList.toggle('active', b.dataset.scope === chat.scope));
+  const picked = pickedTabs();
+  const scopes = [
+    ['tab', '閲覧中のタブ'],
+    ...(picked.length ? [['picked', `添付 ${picked.length}`]] : []),
+    ['space', '全タブ'],
+    ['none', 'タブなし'],
+  ];
+  $('.segmented', el).innerHTML = scopes
+    .map(([key, label]) => `<button data-scope="${key}" class="${key === chat.scope ? 'active' : ''}">${label}</button>`)
+    .join('');
   const items = $('.chat-items', el);
   if (!chat.items.length) {
     const t = store.currentTab;
     const target =
-      chat.scope === 'tab' && t ? `「${t.title}」について` : chat.scope === 'space' ? `${store.currentSpace.name}の${store.tabsIn().length}個のタブについて` : '何でも';
+      chat.scope === 'tab' && t
+        ? `「${t.title}」について`
+        : chat.scope === 'picked'
+          ? `添付した${picked.length}個のタブについて`
+          : chat.scope === 'space'
+            ? `${store.currentSpace.name}の${store.tabsIn().length}個のタブについて`
+            : '何でも';
     items.innerHTML = `<div class="chat-empty">
         <div class="chat-empty-icon">${ICON.sparkles}</div>
         <p><strong>${esc(target)}聞いてください</strong></p>
@@ -853,6 +1147,7 @@ function openSettings() {
 
       <div class="group-title">ブラウジング</div>
       <div class="group">
+        <label class="row"><span>ブックマークバーを表示</span><input name="showBookmarks" type="checkbox" ${s.showBookmarks ? 'checked' : ''}></label>
         <label class="row"><span>検索エンジン</span><select name="engine">${Object.entries(ENGINES).map(([k, e]) => option(k, e.name, s.engine)).join('')}</select></label>
         <label class="row"><span>タブの自動アーカイブ</span><select name="archiveHours">${[[12, '12時間'], [24, '24時間'], [168, '7日間'], [0, 'しない']].map(([v, l]) => option(v, l, s.archiveHours)).join('')}</select></label>
       </div>
@@ -863,7 +1158,7 @@ function openSettings() {
         <label class="row action">バックアップから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         <button class="row action destructive" data-reset>すべてのデータを消去</button>
       </div>
-      <p class="group-note">Kumo v0.2 · Arc と Dia にインスパイアされたWebブラウザ</p>
+      <p class="group-note">Kumo v0.3 · Arc と Dia にインスパイアされたWebブラウザ</p>
     </div>`
   );
   el.querySelectorAll('input[name], select[name]').forEach((input) =>

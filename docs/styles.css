@@ -89,55 +89,106 @@ svg.fill {
   backdrop-filter: blur(22px) saturate(170%);
 }
 
-/* ------------------------------------------------------------ top bar */
+/* ------------------------------------------------------------ top bar + bookmarks bar */
 
 .topbar {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 5;
+  padding: calc(var(--safe-top) + 8px) 0 6px;
+  background: color-mix(in srgb, var(--g1) 55%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border-bottom: 1px solid var(--glass-line);
+}
+
+.topbar-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(var(--safe-top) + 10px) 16px 10px;
+  padding: 0 14px 6px;
 }
 
-.spaces {
+.spacer {
   flex: 1;
+}
+
+.space-pill {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px 0 12px;
+  border-radius: 18px;
+  font-size: 15px;
+  max-width: 70%;
+}
+
+.space-pill strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.space-pill svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+}
+
+.bookmarks {
+  display: flex;
+  gap: 2px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 2px;
+  padding: 0 10px;
+  -webkit-mask-image: linear-gradient(90deg, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, #000 92%, transparent);
 }
 
-.spaces::-webkit-scrollbar {
+.bookmarks[hidden] {
   display: none;
 }
 
-.space-chip {
+.bookmarks::-webkit-scrollbar {
+  display: none;
+}
+
+.bookmark {
   flex: none;
-  height: 36px;
-  padding: 0 14px;
-  border-radius: 18px;
-  font-size: 14px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
-  background: var(--glass);
-  border: 1px solid var(--glass-line);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.space-chip.active {
-  background: #fff;
-  color: #1a1a1f;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+.bookmark:active {
+  background: rgba(255, 255, 255, 0.18);
 }
 
-.space-chip.add {
-  width: 36px;
-  padding: 0;
-  display: grid;
-  place-items: center;
+.bookmark span {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark.add {
+  opacity: 0.75;
+  padding: 0 8px;
+  margin-right: 24px;
+}
+
+.bookmark.add svg {
+  width: 16px;
+  height: 16px;
 }
 
 .icon-btn {
@@ -180,7 +231,7 @@ svg.fill {
 
 .hero {
   text-align: center;
-  padding: 18px 0 22px;
+  padding: 26px 0 16px;
 }
 
 .hero-emoji {
@@ -195,7 +246,7 @@ svg.fill {
 }
 
 .hero p {
-  margin: 0;
+  margin: 8px 0 0;
   opacity: 0.85;
   font-size: 15px;
 }
@@ -1193,4 +1244,360 @@ svg.fill {
 .toast.show {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+/* ------------------------------------------------------------ home ask box (Dia's "Ask anything") */
+
+.ask-card {
+  border-radius: 24px;
+  padding: 14px 12px 10px 16px;
+  margin-bottom: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.ask-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ask-row > svg {
+  margin-top: 3px;
+  opacity: 0.9;
+}
+
+.ask-input {
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: #fff;
+  font-size: 17px;
+  line-height: 1.45;
+  padding: 0;
+  max-height: 140px;
+}
+
+.ask-input::placeholder {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.ask-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ask-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 4px 4px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a1f;
+  font-size: 12px;
+}
+
+.ask-chip > span {
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ask-chip button {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+}
+
+.ask-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+.ask-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.ask-attach {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  opacity: 0.9;
+  padding: 6px 4px;
+}
+
+.ask-attach svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ask-send {
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------ sidebar (Arc / Dia style) */
+
+.sb-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 16;
+  width: min(84vw, 320px);
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--safe-top) + 10px) 10px calc(var(--safe-bottom) + 10px);
+  background: linear-gradient(170deg, color-mix(in srgb, var(--g1) 38%, #0e0e14), color-mix(in srgb, var(--g2) 22%, #0e0e14));
+  color: #fff;
+  transform: translateX(-104%);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 10px 0 40px rgba(0, 0, 0, 0.3);
+}
+
+body.sidebar-open .sidebar {
+  transform: none;
+}
+
+body.sidebar-open .sb-scrim {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sb-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px 10px;
+}
+
+.sb-space {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 16px;
+  text-align: left;
+}
+
+.sb-space strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-space svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+.sb-space-emoji {
+  font-size: 20px;
+}
+
+.sb-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  opacity: 0.85;
+  flex: none;
+}
+
+.sb-icon:active,
+.sb-space:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sb-pins {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sb-pin {
+  height: 54px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sb-pin.active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.sb-tabs {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sb-tab {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.sb-tab.active {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+}
+
+.sb-tab-main,
+.sb-new {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  font-size: 15px;
+  text-align: left;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sb-tab-main span,
+.sb-new span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-tab-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  opacity: 0.55;
+  flex: none;
+}
+
+.sb-tab-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.sb-new {
+  flex: none;
+  opacity: 0.8;
+  border-radius: 10px;
+}
+
+.sb-new svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sb-empty {
+  font-size: 12px;
+  opacity: 0.6;
+  padding: 4px 10px;
+}
+
+.sb-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sb-spaces {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sb-dot {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 17px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  opacity: 0.6;
+}
+
+.sb-dot.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 0 2px var(--c1, #fff) inset;
+}
+
+.sb-dot.add svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* tab picker */
+
+.pick-row .check {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: transparent;
+}
+
+.pick-row.picked .check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pick-row .check svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3;
 }

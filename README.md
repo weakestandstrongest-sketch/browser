@@ -1,72 +1,76 @@
-# Kumo ☁️ — iPhoneで使える自分専用のAIブラウザ
+# Kumo ☁️ — ホーム画面に追加して使う、自分専用のAIブラウザ
 
-Arc と Dia のアイデアを参考にした、iPhone 用の Web ブラウザです（SwiftUI + WebKit）。
+Arc と Dia のアイデアを参考にした Web アプリ（PWA）です。iPhone の Safari で開いて「ホーム画面に追加」すると、アプリのように使えます。
+アプリストアも Mac も不要で、GitHub Pages で無料公開できます。
 
-## 主な機能
+## できること
 
 | 機能 | 参考元 | 内容 |
 | --- | --- | --- |
-| スペース | Arc | 「仕事」「趣味」などタブのまとまりを色付きで切り替え。タブ一覧で左右スワイプしても移動できる |
-| ピン留めタブ | Arc | よく使うサイトをスタートページに固定 |
-| 自動アーカイブ | Arc | ピン留めしていないタブは12時間（設定で変更可）使わないとアーカイブへ移動 |
-| スワイプで操作 | Arc Search | 下のバーを左右にスワイプでタブ切替、上にスワイプでタブ一覧 |
-| スマートアドレスバー | Dia | ひとつの入力欄でURL・検索・AIへの質問を判別（「?」で終わるとAIへの質問を優先） |
-| ページとチャット | Dia | 表示中のページを要約・翻訳・質問。選択したテキストについても聞ける |
+| スペース | Arc | 「仕事」「趣味」などタブのまとまりを色付きで切り替え。画面を左右にスワイプでも移動 |
+| ピン留めタブ | Arc | よく使うサイトをアイコンで固定（長押しでメニュー） |
+| 自動アーカイブ | Arc | ピン留めしていないタブは12時間（変更可）使わないとアーカイブへ。タップで復元 |
+| スマートアドレスバー | Dia | 1つの入力欄でURL・検索・AIへの質問を自動判別。「?」で終わるとAIへの質問を優先 |
+| ページとチャット | Dia | 閲覧中のタブを要約・翻訳・質問（AIがページを読みに行きます） |
 | タブとチャット | Dia | スペース内の全タブをまとめて比較・質問 |
-| スキル | Dia | 「要約」「要点」「翻訳」「やさしく」「注意点」「比較」をワンタップで実行 |
-| Liquid Glass | iOS 26 | iOS 26以降はガラス風のバー、それより前は半透明マテリアル |
+| スキル | Dia | 「要約」「要点」「翻訳」「やさしく」「注意点」「比較」をワンタップ |
+| 調べもの | Arc Search | 質問するとAIがWeb検索して、出典付きでまとめます |
 
-AI 機能は Anthropic の Claude API を使います（デフォルトは Claude Opus 5.5。設定で Sonnet 5.5 / Haiku 5.5 に切り替え可能）。
+AI は Anthropic の Claude API（標準は Claude Opus 5.5、設定で Sonnet 5.5 に変更可）を使います。
 
-## iPhoneで動かす手順
+## しくみと制約
 
-必要なもの: **Mac**、**Xcode 16 以降**（App Store から無料）、iPhone（iOS 17 以降）
+ほとんどのサイト（Google、YouTube、X など）は、他のWebページの中に埋め込んで表示することをセキュリティ上禁止しています。
+そのため Kumo は **タブ・スペース・AI を管理する「司令塔」** として動き、サイト自体は Kumo の上に開く Safari の画面で表示します（右上の「完了」で Kumo に戻ります）。
+AI がページの内容を読むときは、Claude の Web 取得ツールがそのURLを読みに行きます（ログインが必要なページは読めません）。
 
-1. このリポジトリを Mac にクローンして `Kumo.xcodeproj` をダブルクリック
-2. Xcode 左側で「Kumo」プロジェクト →「Signing & Capabilities」→ **Team** に自分の Apple ID を選ぶ
-   - Bundle Identifier がほかと重なるとエラーになるので、`app.kumo.browser` を `com.あなたの名前.kumo` などに変更
-3. iPhone を USB で Mac に接続し、iPhone 側で **設定 → プライバシーとセキュリティ → デベロッパモード** をオン
-4. Xcode 上部で接続した iPhone を選んで ▶︎（Run）
-5. 初回は iPhone の **設定 → 一般 → VPNとデバイス管理** で自分の Apple ID を「信頼」
+## 公開する（最初に1回だけ・無料）
 
-> 無料の Apple ID だとアプリは **7日間** で起動できなくなります（もう一度 Run すれば復活）。
-> Apple Developer Program（年額 $99）に入ると1年有効になり、TestFlight でも配布できます。
+1. GitHub でこのリポジトリを開き、**Settings → Pages** を開く
+2. 「Build and deployment」の **Source** を「Deploy from a branch」にする
+3. **Branch** で公開したいブランチ（`main` にマージ済みなら `main`）と **`/docs`** フォルダを選んで **Save**
+4. 1〜2分待つと `https://weakestandstrongest-sketch.github.io/browser/` で開けるようになります
 
-## AI機能を使う
+## iPhone に入れる
 
-1. [console.anthropic.com](https://console.anthropic.com) で API キーを発行
-2. アプリの「…」メニュー → 設定 → 「Anthropic APIキー」に貼り付けて保存
-3. 下のバーの ✨ ボタン、またはアドレスバーに質問を入力
+1. 上のURLを **Safari** で開く
+2. 共有ボタン（□に↑）→ **「ホーム画面に追加」**
+3. ホーム画面の Kumo アイコンから起動
 
-キーは iPhone のキーチェーンにだけ保存されます。利用料はキーのアカウントに従量課金されます。
+## AI を使う
+
+1. [console.anthropic.com](https://console.anthropic.com) で API キーを発行（従量課金）
+2. Kumo 右上の設定ボタン → 「Anthropic APIキー」に貼り付け
+3. 下の ✨ ボタン、または検索バーに質問を入力
+
+- キーはその端末の Kumo の中（localStorage）にだけ保存され、Anthropic の API 以外には送られません。
+- Web 検索は検索1回ごとに少額の追加料金がかかります。設定でオフにできます。
+- 「web search is not enabled」のようなエラーが出たら、Anthropic Console の設定で Web 検索を有効にしてください。
+
+## Safari で見ているページを AI に聞く
+
+Safari でページのリンクをコピー → Kumo の検索バーを開いて「コピーしたURLを開く・AIに聞く」をタップ → タブに追加されるので「要約」などを押す。
 
 ## ファイル構成
 
 ```
-Kumo/
-├── App/KumoApp.swift            アプリのエントリーポイント
-├── Browser/
-│   ├── BrowserStore.swift       スペース・タブ・アーカイブの管理と保存
-│   ├── BrowserTab.swift         1つのタブ（WKWebView）
-│   ├── Space.swift              スペースとカラーテーマ
-│   └── WebViewContainer.swift   WKWebView を SwiftUI に埋め込む
-├── AI/
-│   ├── ClaudeClient.swift       Claude API（ストリーミング）
-│   ├── AssistantModel.swift     チャットの状態とスキル
-│   └── PageExtractor.swift      開いているページから本文を抽出
-├── Views/                       画面（メイン、アドレスバー、タブ一覧、AI、設定）
-└── Support/                     設定値・キーチェーン・入力判定
+docs/                 ← GitHub Pages で公開されるフォルダ
+├── index.html        画面の土台
+├── styles.css        デザイン（スペースごとのグラデーション、ガラス風UI、ダークモード）
+├── app.js            画面と操作（ホーム、アドレスバー、AIチャット、設定など）
+├── store.js          スペース・タブ・アーカイブの管理と保存
+├── ai.js             Claude API との通信（ストリーミング、Web検索/取得ツール）
+├── markdown.js       AIの回答を安全に表示する簡易Markdown
+├── sw.js             オフラインでも起動できるようにするService Worker
+├── manifest.webmanifest  ホーム画面アプリの設定
+└── icons/            アプリアイコン
 ```
+
+パソコンで試すときは `cd docs && python3 -m http.server` を実行して http://localhost:8000 を開きます。
 
 ## 今後のアイデア
 
-- 広告ブロック（`WKContentRuleList`）
-- 閲覧履歴と、履歴を使ったAI検索
-- 分割表示（Arc の Split View）
-- 「Browse for me」: AIが複数ページを読んで1ページにまとめる（Arc Search）
-- ピン留めタブのフォルダ、スペースごとのログイン状態の分離
-- iCloud でのタブ同期
-
-## 注意
-
-iOS では（EU以外）すべてのブラウザが Apple の WebKit エンジンを使う決まりがあるため、Kumo も Safari と同じ WebKit で表示しています。
+- 閲覧履歴とAIでの履歴検索
+- タブのフォルダ分け
+- 複数端末でのタブ同期
+- 読み上げ（音声でページを要約）

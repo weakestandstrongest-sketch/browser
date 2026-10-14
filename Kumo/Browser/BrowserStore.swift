@@ -165,7 +165,7 @@ final class BrowserStore: ObservableObject {
         let cutoff = Date.now.addingTimeInterval(-hours * 3600)
         let stale = tabs.filter { !$0.isPinned && $0.lastActive < cutoff }
         guard !stale.isEmpty else { return }
-        stale.forEach(archive)
+        for tab in stale { archive(tab) }
         let staleIDs = Set(stale.map(\.id))
         tabs.removeAll { staleIDs.contains($0.id) }
         selectedTabBySpace = selectedTabBySpace.filter { !staleIDs.contains($0.value) }

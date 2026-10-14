@@ -513,29 +513,99 @@ async function pasteIntoAsk() {
 // ---------------------------------------------------------------- the orb (just for fun)
 
 /**
- * Press to squish, drag to pull it around on a rubber band, let go to watch it wobble back.
- * The highlight follows your finger. Five quick taps switch to the next theme color.
+ * Grab the orb and move it anywhere; fling it and it flies, bounces off the screen edges and
+ * drifts back home on a spring. It can be caught mid-flight. Tap it for a wobble; five quick
+ * taps switch to the next theme color.
  */
 function enableOrbPlay() {
   const home = $('#home');
-  const rubber = (d) => (d * 0.5) / (1 + Math.abs(d) / 160);
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-  let drag = null;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SPRING = 12; // pull back toward home (1/s²)
+  const DAMPING = 3.2; // velocity loss (1/s)
+  const BOUNCE = 0.72; // energy kept when hitting an edge
+  let orb = null; // element currently being played with
+  let p = { x: 0, y: 0 }; // offset from its home position (px)
+  let v = { x: 0, y: 0 }; // velocity (px/s)
+  let origin = null; // untransformed center on screen
+  let grab = null; // { id, dx, dy, startX, startY, t, moved, last }
+  let frame = 0;
   let taps = [];
 
-  const light = (orb, rect, e) => {
-    orb.style.setProperty('--hx', `${clamp(((e.clientX - rect.left) / rect.width) * 100, 18, 82)}%`);
-    orb.style.setProperty('--hy', `${clamp(((e.clientY - rect.top) / rect.height) * 100, 18, 82)}%`);
+  const place = () => {
+    // Squash & stretch along the direction of travel.
+    const speed = Math.hypot(v.x, v.y);
+    const stretch = 1 + Math.min(speed / 4000, 0.22);
+    const sx = Math.abs(v.x) >= Math.abs(v.y) ? stretch : 1 / stretch;
+    orb.style.translate = `${p.x}px ${p.y}px`;
+    orb.style.scale = speed > 60 ? `${sx} ${1 / sx}` : '';
+  };
+
+  const bounds = () => {
+    const r = orb.offsetWidth / 2;
+    return {
+      minX: r - origin.x,
+      maxX: innerWidth - r - origin.x,
+      minY: r - origin.y,
+      maxY: innerHeight - r - origin.y,
+    };
+  };
+
+  const settle = () => {
+    cancelAnimationFrame(frame);
+    frame = 0;
+    p = { x: 0, y: 0 };
+    v = { x: 0, y: 0 };
+    orb.classList.remove('flying');
+    orb.style.translate = '';
+    orb.style.scale = '';
+    wobble();
+  };
+
+  const wobble = () => {
+    orb.classList.remove('jelly');
+    void orb.offsetWidth; // restart the animation on rapid taps
+    orb.classList.add('jelly');
+    const el = orb;
+    el.addEventListener('animationend', (e) => e.animationName === 'jelly' && el.classList.remove('jelly'), { once: true });
+  };
+
+  const step = (now, last) => {
+    const dt = Math.min((now - last) / 1000, 1 / 30);
+    v.x += (-SPRING * p.x - DAMPING * v.x) * dt;
+    v.y += (-SPRING * p.y - DAMPING * v.y) * dt;
+    p.x += v.x * dt;
+    p.y += v.y * dt;
+    const b = bounds();
+    if (p.x < b.minX || p.x > b.maxX) {
+      p.x = Math.min(b.maxX, Math.max(b.minX, p.x));
+      v.x = -v.x * BOUNCE;
+    }
+    if (p.y < b.minY || p.y > b.maxY) {
+      p.y = Math.min(b.maxY, Math.max(b.minY, p.y));
+      v.y = -v.y * BOUNCE;
+    }
+    if (Math.hypot(p.x, p.y) < 1.5 && Math.hypot(v.x, v.y) < 20) return settle();
+    place();
+    frame = requestAnimationFrame((t) => step(t, now));
   };
 
   home.addEventListener('pointerdown', (e) => {
-    const orb = e.target.closest('.orb');
-    if (!orb) return;
+    const target = e.target.closest('.orb');
+    if (!target) return;
+    if (target !== orb) {
+      orb = target;
+      p = { x: 0, y: 0 };
+      v = { x: 0, y: 0 };
+    }
+    cancelAnimationFrame(frame); // catch it mid-flight
+    frame = 0;
     orb.setPointerCapture(e.pointerId);
-    drag = { orb, id: e.pointerId, x: e.clientX, y: e.clientY, rect: orb.getBoundingClientRect() };
-    orb.classList.remove('jelly');
+    const rect = orb.getBoundingClientRect();
+    origin = { x: rect.left + rect.width / 2 - p.x, y: rect.top + rect.height / 2 - p.y };
+    grab = { id: e.pointerId, dx: e.clientX - origin.x - p.x, dy: e.clientY - origin.y - p.y, startX: e.clientX, startY: e.clientY, t: e.timeStamp, moved: false, last: { x: e.clientX, y: e.clientY, t: e.timeStamp } };
+    v = { x: 0, y: 0 };
+    orb.classList.remove('jelly', 'flying');
     orb.classList.add('pressed');
-    light(orb, drag.rect, e);
     const ring = document.createElement('span');
     ring.className = 'orb-ripple';
     ring.addEventListener('animationend', () => ring.remove());
@@ -543,23 +613,51 @@ function enableOrbPlay() {
   });
 
   home.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    drag.orb.style.translate = `${rubber(e.clientX - drag.x)}px ${rubber(e.clientY - drag.y)}px`;
-    light(drag.orb, drag.rect, e);
+    if (!grab || e.pointerId !== grab.id) return;
+    if (Math.hypot(e.clientX - grab.startX, e.clientY - grab.startY) > 6) grab.moved = true;
+    if (!grab.moved) return;
+    const b = bounds();
+    p.x = Math.min(b.maxX, Math.max(b.minX, e.clientX - origin.x - grab.dx));
+    p.y = Math.min(b.maxY, Math.max(b.minY, e.clientY - origin.y - grab.dy));
+    // Smoothed finger velocity, used for the fling.
+    const dt = Math.max((e.timeStamp - grab.last.t) / 1000, 1 / 240);
+    v.x = v.x * 0.6 + ((e.clientX - grab.last.x) / dt) * 0.4;
+    v.y = v.y * 0.6 + ((e.clientY - grab.last.y) / dt) * 0.4;
+    grab.last = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    place();
+    // Finger paused: relax the stretch.
+    clearTimeout(grab.idle);
+    grab.idle = setTimeout(() => {
+      if (!grab) return;
+      v = { x: 0, y: 0 };
+      place();
+    }, 90);
   });
 
   const release = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const { orb } = drag;
-    drag = null;
+    if (!grab || e.pointerId !== grab.id) return;
+    const { moved, last } = grab;
+    clearTimeout(grab.idle);
+    grab = null;
     orb.classList.remove('pressed');
-    orb.style.translate = '';
-    orb.style.removeProperty('--hx');
-    orb.style.removeProperty('--hy');
-    void orb.offsetWidth; // restart the wobble even on rapid taps
-    orb.classList.add('jelly');
-    orb.addEventListener('animationend', (ev) => ev.animationName === 'jelly' && orb.classList.remove('jelly'), { once: true });
+    if (e.timeStamp - last.t > 80) v = { x: 0, y: 0 }; // held still before letting go: no fling
 
+    if (moved && !reduceMotion) {
+      orb.classList.add('flying');
+      const start = performance.now();
+      frame = requestAnimationFrame((t) => step(t, start));
+      return;
+    }
+    if (moved) return settle();
+
+    // A tap.
+    if (Math.hypot(p.x, p.y) > 1) {
+      orb.classList.add('flying');
+      const start = performance.now();
+      frame = requestAnimationFrame((t) => step(t, start));
+    } else {
+      wobble();
+    }
     const now = Date.now();
     taps = [...taps.filter((t) => now - t < 1600), now];
     if (taps.length >= 5) {

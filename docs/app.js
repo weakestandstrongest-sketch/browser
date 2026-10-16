@@ -83,7 +83,8 @@ function toast(message, action) {
  * x-safari-https:// scheme (iOS 17+).
  */
 function openExternal(url) {
-  if (store.settings.openIn === 'safari' && /^https?:/.test(url)) {
+  // ひび手帳の中（iframe）からは Safari アプリへの切り替えができないので、そのときはふつうに開く
+  if (store.settings.openIn === 'safari' && /^https?:/.test(url) && window.top === window) {
     location.href = 'x-safari-' + url;
     return;
   }
@@ -124,11 +125,13 @@ function looksLikeQuestion(raw) {
 const searchURL = (query) => (ENGINES[store.settings.engine] || ENGINES.google).url + encodeURIComponent(query);
 
 function openURL(url, title) {
+  if (!/^https?:\/\//i.test(url)) return toast('このリンクは開けません'); // javascript: など、ページ以外は開かない
   const tab = store.touchTab(url, title);
   openExternal(tab.url);
 }
 
 function openTab(tab) {
+  if (!/^https?:\/\//i.test(tab.url)) return toast('このリンクは開けません');
   store.useTab(tab);
   openExternal(tab.url);
 }
@@ -443,7 +446,7 @@ function currentTabHTML(tab) {
 
 function installBanner() {
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  if (standalone || localStorage.getItem('kumo.installHintDismissed')) return '';
+  if (standalone || window.top !== window || localStorage.getItem('kumo.installHintDismissed')) return ''; // ひび手帳の中では出さない
   return `<section class="install glass">
       <div><strong>ホーム画面に追加するとアプリになります</strong>
       <p>Safariの共有ボタン ${ICON.share} →「ホーム画面に追加」</p></div>
@@ -963,6 +966,7 @@ const chat = {
   scope: null, // 'tab' | 'all' | 'picked' | 'none'
   pickedIds: [], // tabs attached from the home ask box
   el: null,
+  queue: [], // questions asked while a reply was still streaming; sent one by one afterwards
 };
 
 function defaultScope() {
@@ -1005,6 +1009,7 @@ function openAssistant({ question, skill, scope, tabIds } = {}) {
 
   $('[data-close]', el).addEventListener('click', popLayer);
   $('[data-new]', el).addEventListener('click', () => {
+    chat.queue = [];
     chat.controller?.abort();
     chat.conversation = null;
     chat.items = [];
@@ -1070,7 +1075,11 @@ function contextFor(scope) {
 }
 
 async function sendChat(text) {
-  if (chat.controller) return;
+  if (chat.controller) {
+    chat.queue.push(text);
+    toast('いまの回答が終わったら、続けて聞きます');
+    return;
+  }
   const { apiKey, model, effort, webTools } = store.settings;
   chat.items.push({ role: 'user', text });
   if (!apiKey) {
@@ -1117,6 +1126,7 @@ async function sendChat(text) {
     reply.status = null;
     chat.controller = null;
     renderChat();
+    if (chat.queue.length) sendChat(chat.queue.shift());
   }
 }
 
@@ -1342,6 +1352,10 @@ function openSettings() {
 store.load();
 store.archiveStaleTabs();
 store.subscribe(render);
+// 別のタブやひび手帳の中で開いている Orb が保存したら読み直す（古い内容で上書きしてブックマークなどが消えないように）
+window.addEventListener('storage', (e) => {
+  if (e.key === null || e.key.startsWith('kumo.')) { store.load(); render(); }
+});
 renderShell();
 render();
 trackViewport();

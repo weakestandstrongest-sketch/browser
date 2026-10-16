@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'orb-v12';
+const CACHE = 'orb-v13';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'store.js', 'ai.js', 'markdown.js', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {

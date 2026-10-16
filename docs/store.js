@@ -205,7 +205,8 @@ export const store = {
       undo: () => {
         const ids = new Set(entries.map((e) => e.id));
         this.state.archived = this.state.archived.filter((a) => !ids.has(a.id));
-        this.state.tabs.push(...removed);
+        const open = new Set(this.state.tabs.map((t) => t.url));
+        this.state.tabs.push(...removed.filter((t) => !open.has(t.url))); // 消したあとに開き直したタブは二重にしない
         this.state.currentTabId = previousCurrent;
         this.commit();
       },

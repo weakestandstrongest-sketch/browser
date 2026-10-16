@@ -9,12 +9,19 @@ function inline(raw) {
     codes.push(code);
     return `\u0000${codes.length - 1}\u0000`;
   });
+  // リンクの URL に * や ~ があっても太字などの置き換えが入らないよう、URL はあとで戻す
+  const hrefs = [];
   s = s
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, href) => {
+      hrefs.push(href.replace(/\u0000(\d+)\u0000/g, (_, i) => '`' + codes[Number(i)] + '`'));
+      return `<a href="\u0001${hrefs.length - 1}\u0001" target="_blank" rel="noopener">${label}</a>`;
+    })
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
     .replace(/~~([^~]+)~~/g, '<del>$1</del>');
-  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[Number(i)]}</code>`);
+  return s
+    .replace(/\u0001(\d+)\u0001/g, (_, i) => hrefs[Number(i)])
+    .replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[Number(i)]}</code>`);
 }
 
 const isBullet = (l) => /^\s*[-*•]\s+/.test(l);
